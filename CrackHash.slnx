@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/Manager/">
+    <Project Path="Manager/Abstractions/Manager.Abstractions.csproj" Id="d1fa7907-9828-4f05-a17c-19dab3e6d793" />
+    <Project Path="Manager/Api/Manager.Api.csproj" Id="8c2125f0-56f1-491a-95e2-f24ad1371259" />
+    <Project Path="Manager/Manager/Manager.Service.csproj" Id="f234779c-76c0-4e87-ad34-1fc2f6252b21" />
+  </Folder>
+  <Folder Name="/Worker/">
+    <Project Path="Worker/Abstractions/Worker.Abstractions.csproj" Id="b2db6327-99ff-490f-a3d9-267f90acb09b" />
+    <Project Path="Worker/Api/Worker.Api.csproj" Id="66008388-5d84-4965-9de7-0c2a359d8055" />
+    <Project Path="Worker/WorkerService/Worker.Service.csproj" Id="591ba2d8-1010-438b-aaf6-315e215d4a57" />
+  </Folder>
+  <Folder Name="/Элементы решения/">
+    <File Path="docker-compose.yml" />
+  </Folder>
+  <Project Path="Contracts/Contracts.csproj" Id="e795c7c8-c4e8-475c-8824-7b26c24a08e3" />
+</Solution>
