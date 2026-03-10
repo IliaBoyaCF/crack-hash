@@ -12,16 +12,18 @@ public class RequestProcessor : IManager
 
     private readonly IRequestStorage _requestStorage;
     private readonly IRequestQueue _requestQueue;
+    private readonly ICrackedHashCache _cache;
     private readonly IOptions<TimeoutOptions> _timeoutOptions;
 
     private readonly ILogger<RequestProcessor> _logger;
 
-    public RequestProcessor(IOptions<TimeoutOptions> timeoutOptions, IRequestStorage requestStorage, ILogger<RequestProcessor> logger, IRequestQueue requestQueue)
+    public RequestProcessor(IOptions<TimeoutOptions> timeoutOptions, IRequestStorage requestStorage, ILogger<RequestProcessor> logger, IRequestQueue requestQueue, ICrackedHashCache cache)
     {
         _timeoutOptions = timeoutOptions;
         _requestStorage = requestStorage;
         _logger = logger;
         _requestQueue = requestQueue;
+        _cache = cache;
     }
 
     public async Task<IRequestInfo> GetStatusAsync(Guid requestId)
@@ -62,8 +64,18 @@ public class RequestProcessor : IManager
             TimeoutInterval = _timeoutOptions.Value.RequestTimeout, 
             Status = RequestStatus.IN_PROGRESS 
         };
+
         _requestStorage.Add(requestIdStr, savedRequest);
-        await _requestQueue.EnqueueAsync(savedRequest);
+        if (_cache.TryGetCached(request.Hash, out IEnumerable<string>? answers))
+        {
+            _logger.LogInformation("Found precomputed answers for hash {Hash} in cache. Setting answers without scheduling to compution.", request.Hash);
+            savedRequest.Status = RequestStatus.READY;
+            savedRequest.AddResults(answers!);
+        }
+        else
+        {
+            await _requestQueue.EnqueueAsync(savedRequest);
+        }
 
         _logger.LogInformation("Assigned GUID: {request.Id} for request and saved it.", savedRequest.Id);
 

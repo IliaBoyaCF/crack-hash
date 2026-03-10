@@ -1,4 +1,5 @@
-﻿using Manager.Abstractions.Services;
+﻿using Manager.Abstractions.Model;
+using Manager.Abstractions.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -7,19 +8,23 @@ namespace Manager.Service;
 public class RequestConsumer : BackgroundService, IRequestConsumer
 {
 
+    private readonly ICrackedHashCache _cache;
     private readonly IRequestQueue _requestQueue;
+    private readonly IRequestStorage _requestStorage;
     private readonly ITaskScheduler _taskScheduler;
     private readonly ILogger<RequestConsumer> _logger;
     private readonly IPlanner _planner;
 
     private readonly ManualResetEventSlim _requestCompleted = new ManualResetEventSlim(true);
 
-    public RequestConsumer(IRequestQueue requestQueue, ITaskScheduler taskScheduler, ILogger<RequestConsumer> logger, IPlanner planner)
+    public RequestConsumer(IRequestQueue requestQueue, ITaskScheduler taskScheduler, ILogger<RequestConsumer> logger, IPlanner planner, ICrackedHashCache cache, IRequestStorage requestStorage)
     {
         _requestQueue = requestQueue;
         _taskScheduler = taskScheduler;
         _logger = logger;
         _planner = planner;
+        _cache = cache;
+        _requestStorage = requestStorage;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -30,6 +35,16 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
 
             _requestCompleted.Wait(stoppingToken);
             _requestCompleted.Reset();
+
+            if (_cache.TryGetCached(request.CrackRequest.Hash, out IEnumerable<string>? precomputed))
+            {
+                _logger.LogInformation("Found precomputed answers for hash {Hash} in cache. Setting answers without scheduling to compution.", request.CrackRequest.Hash);
+                request.AddResults(precomputed!);
+                request.Status = RequestStatus.READY;
+                _requestStorage[request.Id.ToString()] = request;
+                _requestCompleted.Set();
+                continue;
+            }
 
             _logger.LogInformation("Get request {request.Id} from queue.", request.Id);
 
@@ -51,5 +66,13 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
     private void OnRequestCompleted(object? sender, EventArgs e)
     {
         _requestCompleted.Set();
+        if (sender is IRequestInfo requestInfo)
+        {
+            if (requestInfo.Status != RequestStatus.READY)
+            {
+                return;
+            }
+            _cache.TryAdd(requestInfo.CrackRequest.Hash, requestInfo.Data!);
+        }
     }
 }

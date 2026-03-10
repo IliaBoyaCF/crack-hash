@@ -27,6 +27,9 @@ builder.Services.Configure<AlphabetOptions>(
 builder.Services.Configure<RequestQueueOptions>(
     builder.Configuration.GetSection(RequestQueueOptions.SectionName));
 
+builder.Services.Configure<CacheOptions>(
+    builder.Configuration.GetSection(CacheOptions.SectionName));
+
 
 builder.Services.AddCors(options =>
 {
@@ -67,6 +70,7 @@ builder.Services.AddSingleton<ITaskScheduler, Manager.Service.TaskScheduler>();
 builder.Services.AddSingleton<ITaskStorage, TaskStorage>();
 builder.Services.AddSingleton<IWorkerMonitor, WorkerMonitor>();
 builder.Services.AddSingleton<IRequestQueue, RequestQueue>();
+builder.Services.AddSingleton<ICrackedHashCache, CrachedHashCache>();
 
 builder.Services.AddSingleton<IWorkerApiFactory, WorkerApiFactory>();
 builder.Services.AddHttpClient();
