@@ -50,7 +50,13 @@ public class RequestFinalizer : IRequestFinalizer
         var request = _requestStorage[response.RequestId];
         request.AddResults(response.Answers);
 
-        request.Status = request.Status != RequestStatus.ERROR ? RequestStatus.IN_PROGRESS_PARTIAL_READY : RequestStatus.READY_WITH_FAULTS;
+        request.Status = request.Status switch
+        {
+            RequestStatus.ERROR => RequestStatus.READY_WITH_FAULTS,
+            RequestStatus.READY_WITH_FAULTS => RequestStatus.READY_WITH_FAULTS,
+            RequestStatus.READY => RequestStatus.READY,
+            _ => RequestStatus.IN_PROGRESS_PARTIAL_READY,
+        };
 
         _logger.LogInformation("Answers from task ({response.RequestId}, {response.PartNumber}) have been added to request {response.RequestId}", response.RequestId, response.PartNumber, response.RequestId);
 

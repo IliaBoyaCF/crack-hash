@@ -11,20 +11,17 @@ public class RequestProcessor : IManager
 {
 
     private readonly IRequestStorage _requestStorage;
+    private readonly IRequestQueue _requestQueue;
     private readonly IOptions<TimeoutOptions> _timeoutOptions;
-
-    private readonly ITaskScheduler _taskScheduler;
-    private readonly IPlanner _planner;
 
     private readonly ILogger<RequestProcessor> _logger;
 
-    public RequestProcessor(IOptions<TimeoutOptions> timeoutOptions, IRequestStorage requestStorage, IPlanner planner, ITaskScheduler taskScheduler, ILogger<RequestProcessor> logger)
+    public RequestProcessor(IOptions<TimeoutOptions> timeoutOptions, IRequestStorage requestStorage, ILogger<RequestProcessor> logger, IRequestQueue requestQueue)
     {
         _timeoutOptions = timeoutOptions;
         _requestStorage = requestStorage;
-        _planner = planner;
-        _taskScheduler = taskScheduler;
         _logger = logger;
+        _requestQueue = requestQueue;
     }
 
     public async Task<IRequestInfo> GetStatusAsync(Guid requestId)
@@ -58,20 +55,17 @@ public class RequestProcessor : IManager
         Guid requestId = Guid.NewGuid();
         string requestIdStr = requestId.ToString();
 
-        var savedRequest = new RequestInfo { TimeoutInterval = _timeoutOptions.Value.RequestTimeout, Status = RequestStatus.IN_PROGRESS };
+        var savedRequest = new RequestInfo 
+        { 
+            Id = requestId,
+            CrackRequest = request,
+            TimeoutInterval = _timeoutOptions.Value.RequestTimeout, 
+            Status = RequestStatus.IN_PROGRESS 
+        };
         _requestStorage.Add(requestIdStr, savedRequest);
-        savedRequest.Timeout += OnRequestTimeout;
-        savedRequest.StartTimoutMonitoring();
+        await _requestQueue.EnqueueAsync(savedRequest);
 
-        _logger.LogInformation($"Assigned GUID: {requestId} for request and saved it.");
-
-        var tasks = await _planner.CreateWorkerTasksAsync(requestIdStr, request);
-
-        _logger.LogInformation($"Created tasks for workers for request {requestId}.");
-
-        await _taskScheduler.ScheduleAsync(tasks);
-
-        _logger.LogInformation($"Tasks assigned for workers for request {requestId}.");
+        _logger.LogInformation("Assigned GUID: {request.Id} for request and saved it.", savedRequest.Id);
 
         return requestId;
 

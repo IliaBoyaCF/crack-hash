@@ -24,6 +24,9 @@ builder.Services.Configure<TimeoutOptions>(
 builder.Services.Configure<AlphabetOptions>(
     builder.Configuration.GetSection(AlphabetOptions.SectionName));
 
+builder.Services.Configure<RequestQueueOptions>(
+    builder.Configuration.GetSection(RequestQueueOptions.SectionName));
+
 
 builder.Services.AddCors(options =>
 {
@@ -63,9 +66,12 @@ builder.Services.AddSingleton<IRequestStorage, RequestStorage>();
 builder.Services.AddSingleton<ITaskScheduler, Manager.Service.TaskScheduler>();
 builder.Services.AddSingleton<ITaskStorage, TaskStorage>();
 builder.Services.AddSingleton<IWorkerMonitor, WorkerMonitor>();
+builder.Services.AddSingleton<IRequestQueue, RequestQueue>();
 
 builder.Services.AddSingleton<IWorkerApiFactory, WorkerApiFactory>();
 builder.Services.AddHttpClient();
+
+builder.Services.AddHostedService<RequestConsumer>();
 
 var app = builder.Build();
 
