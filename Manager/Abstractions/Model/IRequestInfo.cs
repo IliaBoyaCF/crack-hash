@@ -6,6 +6,7 @@ public interface IRequestInfo
     event EventHandler? Timeout;
 
     TimeSpan TimeoutInterval { get; init; }
+    DateTime? CreatedTime { get; }
     RequestStatus Status { get; set; }
     IEnumerable<string>? Data { get; set; }
 

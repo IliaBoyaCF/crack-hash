@@ -38,6 +38,8 @@ public class RequestInfo : IRequestInfo, IDisposable
     }
     public IEnumerable<string>? Data { get; set; }
 
+    public DateTime? CreatedTime { get; private set; }
+
     public event EventHandler? Timeout;
 
     public RequestInfo()
@@ -77,6 +79,7 @@ public class RequestInfo : IRequestInfo, IDisposable
         {
             return;
         }
+        CreatedTime = DateTime.Now;
         _timer.Stop();
         _timer.Interval = TimeoutInterval.TotalMilliseconds;
         _timer.Start();

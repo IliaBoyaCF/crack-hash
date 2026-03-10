@@ -23,7 +23,7 @@ public class RequestFinalizer : IRequestFinalizer
     public async Task ProcessWorkerResponse(CrackHashWorkerResponse response)
     {
 
-        _logger.LogInformation($"Got response from worker for request {response.RequestId}");
+        _logger.LogInformation("Got response from worker for request {response.RequestId}", response.RequestId);
 
         var relatedTasks = _taskStorage[response.RequestId];
 
@@ -45,17 +45,19 @@ public class RequestFinalizer : IRequestFinalizer
 
         _taskStorage[response.RequestId] = relatedTasks;
 
-        _logger.LogInformation($"Task ({response.RequestId}, {response.PartNumber}) marked as READY");
+        _logger.LogInformation("Task ({response.RequestId}, {response.PartNumber}) marked as READY", response.RequestId, response.PartNumber);
 
         var request = _requestStorage[response.RequestId];
         request.AddResults(response.Answers);
 
-        _logger.LogInformation($"Answers from task ({response.RequestId}, {response.PartNumber}) have been added to request {response.RequestId}");
+        request.Status = request.Status != RequestStatus.ERROR ? RequestStatus.IN_PROGRESS_PARTIAL_READY : RequestStatus.READY_WITH_FAULTS;
+
+        _logger.LogInformation("Answers from task ({response.RequestId}, {response.PartNumber}) have been added to request {response.RequestId}", response.RequestId, response.PartNumber, response.RequestId);
 
         if (allTasksCompleted)
         {
             request.Status = RequestStatus.READY;
-            _logger.LogInformation($"All tasks are READY for request {response.RequestId} so it marked as READY");
+            _logger.LogInformation("All tasks are READY for request {response.RequestId} so it marked as READY", response.RequestId);
         }
 
         _requestStorage[response.RequestId] = request;
