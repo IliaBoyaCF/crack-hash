@@ -1,26 +1,31 @@
 ﻿using Manager.Abstractions.Model;
-using System.Text.Json.Serialization;
 
 namespace Manager.Service;
 
 public class RequestInfo : IRequestInfo, IDisposable
 {
 
-    private System.Timers.Timer _timer;
+    private readonly System.Timers.Timer _timer;
+    private readonly object _lock = new();
+    
     private RequestStatus _status;
-    private readonly object _lock = new object();
     private bool _disposed;
 
-    [JsonIgnore]
     public TimeSpan TimeoutInterval { get; init; } = TimeSpan.MaxValue;
     public RequestStatus Status 
     { 
         get => _status; 
         set
         {
+            EventHandler? completedEvent = null;
             lock (_lock)
             {
                 var oldStatus = _status;
+                if (IsFinalStatus(oldStatus) && !IsFinalStatus(value))
+                {
+                    throw new ArgumentException("Can't change status from final to non final.");
+                }
+
                 _status = value;
 
                 if (_disposed)
@@ -28,17 +33,31 @@ public class RequestInfo : IRequestInfo, IDisposable
                     return;
                 }
 
-                if (oldStatus == RequestStatus.IN_PROGRESS && value != RequestStatus.IN_PROGRESS)
+                if (IsFinalStatus(_status))
                 {
-                    _timer.Stop();
-                    Dispose();
+                    CancelTimoutMonitoring();
+                    completedEvent = Completed;
                 }
             }
+            completedEvent?.Invoke(this, EventArgs.Empty);
         } 
     }
+
+    private void CancelTimoutMonitoring()
+    {
+        Dispose();
+    }
+
     public IEnumerable<string>? Data { get; set; }
 
+    public DateTime? CreatedTime { get; private set; }
+
+    public Guid Id { get; init; }
+
+    public required CrackRequest CrackRequest { get; init; }
+
     public event EventHandler? Timeout;
+    public event EventHandler? Completed;
 
     public RequestInfo()
     {
@@ -52,12 +71,23 @@ public class RequestInfo : IRequestInfo, IDisposable
         lock (_lock)
         {
             if (_disposed) { return; }
-            if (_status == RequestStatus.IN_PROGRESS)
+            if (!IsFinalStatus(_status))
             {
                 Timeout?.Invoke(this, EventArgs.Empty);
             }
             Dispose();
         }
+    }
+
+    private static bool IsFinalStatus(RequestStatus status)
+    {
+        return status switch
+        {
+            RequestStatus.READY => true,
+            RequestStatus.READY_WITH_FAULTS => true,
+            RequestStatus.ERROR => true,
+            _ => false
+        };
     }
 
     public void Dispose()
@@ -67,16 +97,18 @@ public class RequestInfo : IRequestInfo, IDisposable
             return;
         }
         _disposed = true;
-        _timer?.Elapsed -= OnTimerElapsed;
-        _timer?.Dispose();
+        _timer.Stop();
+        _timer.Elapsed -= OnTimerElapsed;
+        _timer.Dispose();
     }
 
     public void StartTimoutMonitoring()
     {
         if (_disposed || _status != RequestStatus.IN_PROGRESS)
         {
-            return;
+            throw new InvalidOperationException("Timeout has been already triggered or cancelled.");
         }
+        CreatedTime = DateTime.Now;
         _timer.Stop();
         _timer.Interval = TimeoutInterval.TotalMilliseconds;
         _timer.Start();

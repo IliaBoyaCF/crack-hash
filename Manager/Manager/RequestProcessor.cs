@@ -5,76 +5,108 @@ using Manager.Abstractions.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Manager.Service
+namespace Manager.Service;
+
+public class RequestProcessor : IManager
 {
-    public class RequestProcessor : IManager
+
+    private readonly IRequestStorage _requestStorage;
+    private readonly IRequestQueue _requestQueue;
+    private readonly ICrackedHashCache _cache;
+    private readonly IOptions<TimeoutOptions> _timeoutOptions;
+
+    private readonly ILogger<RequestProcessor> _logger;
+
+    public RequestProcessor(IOptions<TimeoutOptions> timeoutOptions, IRequestStorage requestStorage, ILogger<RequestProcessor> logger, IRequestQueue requestQueue, ICrackedHashCache cache)
     {
+        _timeoutOptions = timeoutOptions;
+        _requestStorage = requestStorage;
+        _logger = logger;
+        _requestQueue = requestQueue;
+        _cache = cache;
+    }
 
-        private readonly IRequestStorage _requestStorage;
-        private readonly IOptions<TimeoutOptions> _timeoutOptions;
-
-        private readonly ITaskScheduler _taskScheduler;
-        private readonly IPlanner _planner;
-
-        private readonly ILogger<RequestProcessor> _logger;
-
-        public RequestProcessor(IOptions<TimeoutOptions> timeoutOptions, IRequestStorage requestStorage, IPlanner planner, ITaskScheduler taskScheduler, ILogger<RequestProcessor> logger)
+    public async Task<IRequestInfo> GetStatusAsync(Guid requestId)
+    {
+        try
         {
-            _timeoutOptions = timeoutOptions;
-            _requestStorage = requestStorage;
-            _planner = planner;
-            _taskScheduler = taskScheduler;
-            _logger = logger;
-        }
-
-        public async Task<IRequestInfo> GetStatusAsync(Guid requestId)
-        {
-            try
+            _logger.LogInformation($"Got status check for request with GUID: {requestId}");
+            var requestInfo = _requestStorage[requestId.ToString()];
+            var now = DateTime.Now;
+            if (IsRequestTimedout(requestInfo, now))
             {
-                _logger.LogInformation($"Got status check for request with GUID: {requestId}");
-                var requestInfo = _requestStorage[requestId.ToString()];
-                return requestInfo;
+                OnRequestTimeout(requestInfo);
             }
-            catch (KeyNotFoundException e)
-            {
-                throw new NoSuchElementException($"Request with GUID {requestId} is unknown.", e);
-            }
-
+            return requestInfo;
+        }
+        catch (KeyNotFoundException e)
+        {
+            throw new NoSuchElementException($"Request with GUID {requestId} is unknown.", e);
         }
 
-        public async Task<Guid> RegisterAsync(CrackRequest request)
+    }
+
+    private static bool IsRequestTimedout(IRequestInfo requestInfo, DateTime now)
+    {
+        return requestInfo.Status != RequestStatus.READY && requestInfo.Status != RequestStatus.READY_WITH_FAULTS && now - requestInfo.CreatedTime > requestInfo.TimeoutInterval;
+    }
+
+    public async Task<Guid> RegisterAsync(CrackRequest request)
+    {
+        _logger.LogInformation($"Got crack request for hash: {request.Hash} and max length {request.MaxLength}");
+        Guid requestId = Guid.NewGuid();
+        string requestIdStr = requestId.ToString();
+
+        var savedRequest = new RequestInfo 
+        { 
+            Id = requestId,
+            CrackRequest = request,
+            TimeoutInterval = _timeoutOptions.Value.RequestTimeout, 
+            Status = RequestStatus.IN_PROGRESS 
+        };
+
+        _requestStorage.Add(requestIdStr, savedRequest);
+        if (_cache.TryGetCached(request.Hash, out IEnumerable<string>? answers))
         {
-            _logger.LogInformation($"Got crack request for hash: {request.Hash} and max length {request.MaxLength}");
-            Guid requestId = Guid.NewGuid();
-            string requestIdStr = requestId.ToString();
-
-            var savedRequest = new RequestInfo { TimeoutInterval = _timeoutOptions.Value.RequestTimeout, Status = RequestStatus.IN_PROGRESS };
-            _requestStorage.Add(requestIdStr, savedRequest);
-            savedRequest.Timeout += OnRequestTimeout;
-            savedRequest.StartTimoutMonitoring();
-
-            _logger.LogInformation($"Assigned GUID: {requestId} for request and saved it.");
-
-            var tasks = await _planner.CreateWorkerTasksAsync(requestIdStr, request);
-
-            _logger.LogInformation($"Created tasks for workers for request {requestId}.");
-
-            await _taskScheduler.ScheduleAsync(tasks);
-
-            _logger.LogInformation($"Tasks assigned for workers for request {requestId}.");
-
-            return requestId;
-
+            _logger.LogInformation("Found precomputed answers for hash {Hash} in cache. Setting answers without scheduling to compution.", request.Hash);
+            savedRequest.Status = RequestStatus.READY;
+            savedRequest.AddResults(answers!);
+        }
+        else
+        {
+            await _requestQueue.EnqueueAsync(savedRequest);
         }
 
-        private void OnRequestTimeout(object? sender, EventArgs e)
+        _logger.LogInformation("Assigned GUID: {request.Id} for request and saved it.", savedRequest.Id);
+
+        return requestId;
+
+    }
+
+    private void OnRequestTimeout(object? sender, EventArgs e)
+    {
+        if (sender is RequestInfo requestInfo)
         {
-            if (sender is RequestInfo requestInfo)
-            {
+            OnRequestTimeout(requestInfo);
+        }
+    }
+
+    private void OnRequestTimeout(IRequestInfo requestInfo)
+    {
+        switch (requestInfo.Status)
+        {
+            case RequestStatus.READY_WITH_FAULTS:
+            case RequestStatus.IN_PROGRESS_PARTIAL_READY:
+                _logger.LogInformation("Marking request as {RequestStatus} due to timeout and partial success.", requestInfo.Status);
+                requestInfo.Status = RequestStatus.READY_WITH_FAULTS;
+                break;
+            case RequestStatus.READY:
+                break;
+            default:
                 _logger.LogInformation($"Marking request as ERROR due to timeout");
                 requestInfo.Status = RequestStatus.ERROR;
-                requestInfo.Timeout -= OnRequestTimeout;
-            }
+                break;
         }
+        requestInfo.Timeout -= OnRequestTimeout;
     }
 }

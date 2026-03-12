@@ -6,6 +6,8 @@ namespace Manager.Abstractions.Model
     public enum RequestStatus
     {
         IN_PROGRESS,
+        IN_PROGRESS_PARTIAL_READY,
+        READY_WITH_FAULTS,
         READY,
         ERROR,
     }

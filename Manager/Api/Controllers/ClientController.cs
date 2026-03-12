@@ -1,5 +1,6 @@
 using Manager.Abstractions.Model;
 using Manager.Abstractions.Services;
+using Manager.Api.Dtos;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Manager.Api.Controllers
@@ -26,9 +27,10 @@ namespace Manager.Api.Controllers
         }
 
         [HttpGet("status")]
-        public async Task<IRequestInfo> Status([FromQuery] Guid requestId)
+        public async Task<RequestInfoDto> Status([FromQuery] Guid requestId)
         {
-            return await _manager.GetStatusAsync(requestId);
+            var requestInfo = await _manager.GetStatusAsync(requestId);
+            return requestInfo.ToDto();
         }
 
     }
