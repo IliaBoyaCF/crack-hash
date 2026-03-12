@@ -8,7 +8,7 @@ namespace Manager.Service;
 public class CrachedHashCache : ICrackedHashCache
 {
 
-    private readonly ConcurrentDictionary<string, IEnumerable<string>> _cache = [];
+    private readonly ConcurrentDictionary<(string hash, int maxLength), IEnumerable<string>> _cache = [];
 
     public int Count => _cache.Count;
 
@@ -23,17 +23,17 @@ public class CrachedHashCache : ICrackedHashCache
         }
     }
 
-    public bool TryAdd(string hash, IEnumerable<string> answers)
+    public bool TryAdd(string hash, int maxLength, IEnumerable<string> answers)
     {
         while (Count >= Capacity)
         {
             _cache.TryRemove(_cache.First().Key, out _);
         }
-        return _cache.TryAdd(hash, [.. answers]);
+        return _cache.TryAdd((hash, maxLength), [.. answers]);
     }
 
-    public bool TryGetCached(string hash, out IEnumerable<string>? answers)
+    public bool TryGetCached(string hash, int maxLength, out IEnumerable<string>? answers)
     {
-        return _cache.TryGetValue(hash, out answers);
+        return _cache.TryGetValue((hash, maxLength), out answers);
     }
 }

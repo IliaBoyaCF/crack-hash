@@ -66,7 +66,7 @@ public class RequestProcessor : IManager
         };
 
         _requestStorage.Add(requestIdStr, savedRequest);
-        if (_cache.TryGetCached(request.Hash, out IEnumerable<string>? answers))
+        if (_cache.TryGetCached(request.Hash, request.MaxLength, out IEnumerable<string>? answers))
         {
             _logger.LogInformation("Found precomputed answers for hash {Hash} in cache. Setting answers without scheduling to compution.", request.Hash);
             savedRequest.Status = RequestStatus.READY;
@@ -97,7 +97,7 @@ public class RequestProcessor : IManager
         {
             case RequestStatus.READY_WITH_FAULTS:
             case RequestStatus.IN_PROGRESS_PARTIAL_READY:
-                _logger.LogInformation("Marking request as {RequestStatus} due to timeout and partial success.", requestInfo.Status);
+                _logger.LogInformation("Marking request as {RequestStatus} due to timeout and partial success.", RequestStatus.READY_WITH_FAULTS);
                 requestInfo.Status = RequestStatus.READY_WITH_FAULTS;
                 break;
             case RequestStatus.READY:
