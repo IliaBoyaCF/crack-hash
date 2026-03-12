@@ -36,7 +36,7 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
             _requestCompleted.Wait(stoppingToken);
             _requestCompleted.Reset();
 
-            if (_cache.TryGetCached(request.CrackRequest.Hash, out IEnumerable<string>? precomputed))
+            if (_cache.TryGetCached(request.CrackRequest.Hash, request.CrackRequest.MaxLength, out IEnumerable<string>? precomputed))
             {
                 _logger.LogInformation("Found precomputed answers for hash {Hash} in cache. Setting answers without scheduling to compution.", request.CrackRequest.Hash);
                 request.AddResults(precomputed!);
@@ -72,7 +72,7 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
             {
                 return;
             }
-            _cache.TryAdd(requestInfo.CrackRequest.Hash, requestInfo.Data!);
+            _cache.TryAdd(requestInfo.CrackRequest.Hash, requestInfo.CrackRequest.MaxLength, requestInfo.Data!);
         }
     }
 }
