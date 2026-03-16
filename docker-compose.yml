@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  manager:
+    build:
+      context: .
+      dockerfile: Manager/Api/Dockerfile
+    container_name: manager-service
+    ports:
+      - "5287:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+    networks:
+      - app-network
+
+  worker-1:
+    build:
+      context: .
+      dockerfile: Worker/Api/Dockerfile
+    container_name: worker-1
+    ports:
+      - "5257:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+    networks:
+      - app-network
+
+  worker-2:
+    build:
+      context: .
+      dockerfile: Worker/Api/Dockerfile
+    container_name: worker-2
+    ports:
+      - "5258:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+    networks:
+      - app-network
+
+  worker-3:
+    build:
+      context: .
+      dockerfile: Worker/Api/Dockerfile
+    container_name: worker-3
+    ports:
+      - "5259:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
