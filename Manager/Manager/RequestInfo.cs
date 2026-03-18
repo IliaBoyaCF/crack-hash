@@ -2,16 +2,25 @@
 
 namespace Manager.Service;
 
-public class RequestInfo : IRequestInfo, IDisposable
+internal class RequestInfo : IRequestInfo
 {
-
-    private readonly System.Timers.Timer _timer;
     private readonly object _lock = new();
     
     private RequestStatus _status;
-    private bool _disposed;
 
-    public TimeSpan TimeoutInterval { get; init; } = TimeSpan.MaxValue;
+    private TimeSpan _timeoutInterval = TimeSpan.MaxValue;
+    public TimeSpan TimeoutInterval 
+    { 
+        get => _timeoutInterval; 
+        set
+        {
+            lock (_lock)
+            {
+                _timeoutInterval = value;
+            }
+        } 
+    }
+
     public RequestStatus Status 
     { 
         get => _status; 
@@ -28,14 +37,9 @@ public class RequestInfo : IRequestInfo, IDisposable
 
                 _status = value;
 
-                if (_disposed)
-                {
-                    return;
-                }
-
                 if (IsFinalStatus(_status))
                 {
-                    CancelTimoutMonitoring();
+                    IgnoreTimeout();
                     completedEvent = Completed;
                 }
             }
@@ -43,41 +47,31 @@ public class RequestInfo : IRequestInfo, IDisposable
         } 
     }
 
-    private void CancelTimoutMonitoring()
-    {
-        Dispose();
+    private IEnumerable<string>? _data;
+    public IEnumerable<string>? Data 
+    { 
+        get => _data; 
+        set 
+        {
+            lock (_lock)
+            {
+                _data = value;
+            }
+        }
     }
-
-    public IEnumerable<string>? Data { get; set; }
-
-    public DateTime? CreatedTime { get; private set; }
 
     public Guid Id { get; init; }
 
     public required CrackRequest CrackRequest { get; init; }
 
+    private bool _tracked = false;
+    public bool IsTimeoutEnabled { get => _tracked; set => Interlocked.Exchange(ref _tracked, value); }
+
+    private DateTime _monitoringStart = DateTime.MinValue;
+    public DateTime StartedAt { get => _monitoringStart; }
+
     public event EventHandler? Timeout;
     public event EventHandler? Completed;
-
-    public RequestInfo()
-    {
-        _timer = new System.Timers.Timer();
-        _timer.AutoReset = false;
-        _timer.Elapsed += OnTimerElapsed;
-    }
-
-    private void OnTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e)
-    {
-        lock (_lock)
-        {
-            if (_disposed) { return; }
-            if (!IsFinalStatus(_status))
-            {
-                Timeout?.Invoke(this, EventArgs.Empty);
-            }
-            Dispose();
-        }
-    }
 
     private static bool IsFinalStatus(RequestStatus status)
     {
@@ -90,30 +84,6 @@ public class RequestInfo : IRequestInfo, IDisposable
         };
     }
 
-    public void Dispose()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-        _disposed = true;
-        _timer.Stop();
-        _timer.Elapsed -= OnTimerElapsed;
-        _timer.Dispose();
-    }
-
-    public void StartTimoutMonitoring()
-    {
-        if (_disposed || _status != RequestStatus.IN_PROGRESS)
-        {
-            throw new InvalidOperationException("Timeout has been already triggered or cancelled.");
-        }
-        CreatedTime = DateTime.Now;
-        _timer.Stop();
-        _timer.Interval = TimeoutInterval.TotalMilliseconds;
-        _timer.Start();
-    }
-
     public void AddResults(IEnumerable<string> results)
     {
         lock (_lock)
@@ -124,5 +94,25 @@ public class RequestInfo : IRequestInfo, IDisposable
             }
             ((List<string>)Data).AddRange(results);
         }
+    }
+
+    public void ResetTimeout()
+    {
+        lock (_lock)
+        {
+            _monitoringStart = DateTime.Now;
+            _tracked = true;
+        }
+    }
+
+    public void IgnoreTimeout()
+    {
+        Interlocked.Exchange(ref _tracked, false);
+    }
+
+    public void OnTimeout()
+    {
+        Interlocked.Exchange(ref _tracked, false);
+        Timeout?.Invoke(this, EventArgs.Empty);
     }
 }

@@ -3,13 +3,12 @@ using Manager.Abstractions.Model;
 
 namespace Manager.Service;
 
-internal class WorkerTask : IWorkerTask, IDisposable
+internal class WorkerTask : IWorkerTask
 {
 
-    private System.Timers.Timer _timer;
-    private RequestStatus _status;
     private readonly object _lock = new object();
-    private bool _disposed;
+
+    private RequestStatus _status;
 
     public required CrackHashManagerRequest Request { get; init; }
     public required Uri WorkerAddress { get; init; }
@@ -18,68 +17,50 @@ internal class WorkerTask : IWorkerTask, IDisposable
         get => _status; 
         set 
         {
-            lock (_lock)
+            Interlocked.Exchange(ref _status, value);
+            if (value != RequestStatus.READY)
             {
-                var oldStatus = _status;
-                _status = value;
-                
-                if (_disposed)
-                {
-                    return;
-                }
-
-                if (oldStatus == RequestStatus.IN_PROGRESS && value != RequestStatus.IN_PROGRESS)
-                {
-                    _timer.Stop();
-                    Dispose();
-                }
+                return;
             }
+            IgnoreTimeout();
         } 
     }
 
-    public required TimeSpan TimeoutInterval { get; init; }
+    private bool _tracked = false;
+    public bool IsTimeoutEnabled { get => _tracked; set => Interlocked.Exchange(ref _tracked, value); }
+
+    private TimeSpan _timeoutInterval = TimeSpan.MaxValue;
+    public TimeSpan TimeoutInterval
+    {
+        get => _timeoutInterval;
+        set
+        {
+            lock (_lock)
+            {
+                _timeoutInterval = value;
+            }
+        }
+    }
+
+    private DateTime _monitoringStart = DateTime.MinValue;
+    public DateTime StartedAt { get => _monitoringStart; }
 
     public event EventHandler? Timeout;
 
-    public WorkerTask()
+    public void ResetTimeout()
     {
-        _timer = new System.Timers.Timer();
-        _timer.AutoReset = false;
-        _timer.Elapsed += OnTimerElapsed;
+        Interlocked.Exchange(ref _monitoringStart, DateTime.Now);
+        Interlocked.Exchange(ref _tracked, true);
     }
 
-    private void OnTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e) 
+    public void IgnoreTimeout()
     {
-        lock (_lock)
-        {
-            if (_disposed) { return; }
-            if (_status == RequestStatus.IN_PROGRESS)
-            {
-                Timeout?.Invoke(this, EventArgs.Empty);
-            }
-            Dispose();
-        }
+        Interlocked.Exchange(ref _tracked, false);
     }
 
-    public void Dispose()
+    public void OnTimeout()
     {
-        if (_disposed)
-        {
-            return;
-        }
-        _disposed = true;
-        _timer?.Elapsed -= OnTimerElapsed;
-        _timer?.Dispose();
-    }
-
-    public void StartTimeoutMonitoring()
-    {
-        if (_disposed || _status != RequestStatus.IN_PROGRESS)
-        {
-            return;
-        }
-        _timer.Stop();
-        _timer.Interval = TimeoutInterval.TotalMilliseconds;
-        _timer.Start();
+        Interlocked.Exchange(ref _tracked, false);
+        Timeout?.Invoke(this, EventArgs.Empty);
     }
 }

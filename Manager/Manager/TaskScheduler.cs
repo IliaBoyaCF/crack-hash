@@ -10,15 +10,17 @@ public class TaskScheduler : ITaskScheduler
 
     private readonly IWorkerApiFactory _workerApiFactory;
     private readonly ITaskStorage _taskStorage;
+    private readonly ITimeoutMonitor<string> _timeoutMonitor;
 
     private readonly ILogger<TaskScheduler> _logger;
 
 
-    public TaskScheduler(IWorkerApiFactory workerApiFactory, ITaskStorage taskStorage, ILogger<TaskScheduler> logger)
+    public TaskScheduler(IWorkerApiFactory workerApiFactory, ITaskStorage taskStorage, ILogger<TaskScheduler> logger, ITimeoutMonitor<string> timeoutMonitor)
     {
         _workerApiFactory = workerApiFactory;
         _taskStorage = taskStorage;
         _logger = logger;
+        _timeoutMonitor = timeoutMonitor;
     }
 
     public async Task ScheduleAsync(IEnumerable<IWorkerTask> tasks)
@@ -41,7 +43,7 @@ public class TaskScheduler : ITaskScheduler
             var scheduledTask = workerApi.AssignTask(task.Request).ContinueWith(async t =>
             {
                 _taskStorage[requestId].Add(task);
-                task.StartTimeoutMonitoring();
+                _timeoutMonitor.TryAdd(task.Request.RequestId, task, resetStartedAt: true);
             });
             scheduledTasks.Add(scheduledTask);
             _logger.LogInformation($"Assigned task for {task.WorkerAddress} for request: {requestId}");

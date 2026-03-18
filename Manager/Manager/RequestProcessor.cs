@@ -32,11 +32,6 @@ public class RequestProcessor : IManager
         {
             _logger.LogInformation($"Got status check for request with GUID: {requestId}");
             var requestInfo = _requestStorage[requestId.ToString()];
-            var now = DateTime.Now;
-            if (IsRequestTimedout(requestInfo, now))
-            {
-                OnRequestTimeout(requestInfo);
-            }
             return requestInfo;
         }
         catch (KeyNotFoundException e)
@@ -44,11 +39,6 @@ public class RequestProcessor : IManager
             throw new NoSuchElementException($"Request with GUID {requestId} is unknown.", e);
         }
 
-    }
-
-    private static bool IsRequestTimedout(IRequestInfo requestInfo, DateTime now)
-    {
-        return requestInfo.Status != RequestStatus.READY && requestInfo.Status != RequestStatus.READY_WITH_FAULTS && now - requestInfo.CreatedTime > requestInfo.TimeoutInterval;
     }
 
     public async Task<Guid> RegisterAsync(CrackRequest request)
@@ -64,6 +54,9 @@ public class RequestProcessor : IManager
             TimeoutInterval = _timeoutOptions.Value.RequestTimeout, 
             Status = RequestStatus.IN_PROGRESS 
         };
+
+        savedRequest.Timeout += OnRequestTimeout;
+        savedRequest.Completed += OnRequestCompleted;
 
         _requestStorage.Add(requestIdStr, savedRequest);
         if (_cache.TryGetCached(request.Hash, request.MaxLength, out IEnumerable<string>? answers))
@@ -81,6 +74,15 @@ public class RequestProcessor : IManager
 
         return requestId;
 
+    }
+
+    private void OnRequestCompleted(object? sender, EventArgs e)
+    {
+        if (sender is RequestInfo requestInfo)
+        {
+            requestInfo.Timeout -= OnRequestTimeout;
+            requestInfo.Completed -= OnRequestCompleted;
+        }
     }
 
     private void OnRequestTimeout(object? sender, EventArgs e)

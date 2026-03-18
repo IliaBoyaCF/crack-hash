@@ -71,11 +71,13 @@ builder.Services.AddSingleton<ITaskStorage, TaskStorage>();
 builder.Services.AddSingleton<IWorkerMonitor, WorkerMonitor>();
 builder.Services.AddSingleton<IRequestQueue, RequestQueue>();
 builder.Services.AddSingleton<ICrackedHashCache, CrachedHashCache>();
+builder.Services.AddSingleton<ITimeoutMonitor<string>, TimeoutMonitor<string>>();
 
 builder.Services.AddSingleton<IWorkerApiFactory, WorkerApiFactory>();
 builder.Services.AddHttpClient();
 
 builder.Services.AddHostedService<RequestConsumer>();
+builder.Services.AddHostedService(sp => (TimeoutMonitor<string>)sp.GetRequiredService<ITimeoutMonitor<string>>());
 
 var app = builder.Build();
 
