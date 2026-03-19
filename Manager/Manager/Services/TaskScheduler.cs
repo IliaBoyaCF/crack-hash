@@ -3,7 +3,7 @@ using Manager.Abstractions.Model;
 using Manager.Abstractions.Services;
 using Microsoft.Extensions.Logging;
 
-namespace Manager.Service;
+namespace Manager.Service.Services;
 
 public class TaskScheduler : ITaskScheduler
 {
@@ -13,7 +13,6 @@ public class TaskScheduler : ITaskScheduler
     private readonly ITimeoutMonitor<string> _timeoutMonitor;
 
     private readonly ILogger<TaskScheduler> _logger;
-
 
     public TaskScheduler(IWorkerApiFactory workerApiFactory, ITaskStorage taskStorage, ILogger<TaskScheduler> logger, ITimeoutMonitor<string> timeoutMonitor)
     {
@@ -32,7 +31,7 @@ public class TaskScheduler : ITaskScheduler
 
         string requestId = tasks.First().Request.RequestId;
 
-        _taskStorage[requestId] = [];
+        await _taskStorage.UpsertAsync(requestId, []);
 
         _logger.LogInformation($"Created record in task storage for {requestId} request.");
 
@@ -42,11 +41,13 @@ public class TaskScheduler : ITaskScheduler
             var workerApi = _workerApiFactory.CreateWorkerApi(task.WorkerAddress);
             var scheduledTask = workerApi.AssignTask(task.Request).ContinueWith(async t =>
             {
-                _taskStorage[requestId].Add(task);
+                await _taskStorage.UpsertAsync(requestId, [.. await _taskStorage.GetAsync(requestId)]);
+                //_taskStorage[requestId].Add(task);
                 _timeoutMonitor.TryAdd(task.Request.RequestId, task, resetStartedAt: true);
-            });
+                
+                _logger.LogInformation($"Assigned task for {task.WorkerAddress} for request: {requestId}");
+            }).Unwrap();
             scheduledTasks.Add(scheduledTask);
-            _logger.LogInformation($"Assigned task for {task.WorkerAddress} for request: {requestId}");
         }
 
         await Task.WhenAll(scheduledTasks);

@@ -1,7 +1,7 @@
 ﻿using Contracts.ManagerToWorker;
 using Manager.Abstractions.Model;
 
-namespace Manager.Service;
+namespace Manager.Service.Model;
 
 internal class WorkerTask : IWorkerTask
 {
@@ -49,8 +49,11 @@ internal class WorkerTask : IWorkerTask
 
     public void ResetTimeout()
     {
-        Interlocked.Exchange(ref _monitoringStart, DateTime.Now);
-        Interlocked.Exchange(ref _tracked, true);
+        lock (_lock)
+        {
+            _monitoringStart = DateTime.Now;
+            _tracked = true;
+        }
     }
 
     public void IgnoreTimeout()

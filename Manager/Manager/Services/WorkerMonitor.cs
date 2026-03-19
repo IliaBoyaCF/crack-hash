@@ -4,7 +4,7 @@ using Manager.Abstractions.Options;
 using Manager.Abstractions.Services;
 using Microsoft.Extensions.Options;
 
-namespace Manager.Service;
+namespace Manager.Service.Services;
 
 public class WorkerMonitor : IWorkerMonitor
 {

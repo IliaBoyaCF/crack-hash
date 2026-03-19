@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 
-namespace Manager.Service;
+namespace Manager.Service.Services;
 
 public class TimeoutMonitor<TKey>(IOptions<TimeoutOptions> options, ILogger<TimeoutMonitor<TKey>> logger) : BackgroundService, ITimeoutMonitor<TKey> where TKey : notnull
 {

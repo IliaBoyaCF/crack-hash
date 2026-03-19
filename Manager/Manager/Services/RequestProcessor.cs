@@ -2,10 +2,11 @@
 using Manager.Abstractions.Model;
 using Manager.Abstractions.Options;
 using Manager.Abstractions.Services;
+using Manager.Service.Model;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Manager.Service;
+namespace Manager.Service.Services;
 
 public class RequestProcessor : IManager
 {
@@ -31,7 +32,7 @@ public class RequestProcessor : IManager
         try
         {
             _logger.LogInformation($"Got status check for request with GUID: {requestId}");
-            var requestInfo = _requestStorage[requestId.ToString()];
+            var requestInfo = await _requestStorage.GetAsync(requestId.ToString());
             return requestInfo;
         }
         catch (KeyNotFoundException e)
@@ -58,7 +59,7 @@ public class RequestProcessor : IManager
         savedRequest.Timeout += OnRequestTimeout;
         savedRequest.Completed += OnRequestCompleted;
 
-        _requestStorage.Add(requestIdStr, savedRequest);
+        await _requestStorage.UpsertAsync(requestIdStr, savedRequest);
         if (_cache.TryGetCached(request.Hash, request.MaxLength, out IEnumerable<string>? answers))
         {
             _logger.LogInformation("Found precomputed answers for hash {Hash} in cache. Setting answers without scheduling to compution.", request.Hash);

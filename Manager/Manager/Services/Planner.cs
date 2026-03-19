@@ -4,7 +4,7 @@ using Manager.Abstractions.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Manager.Service;
+namespace Manager.Service.Services;
 
 public class Planner : IPlanner
 {

@@ -4,6 +4,8 @@ using Manager.Abstractions.Services;
 using Manager.Api.Clients;
 using Manager.Api.Exceptions;
 using Manager.Service;
+using Manager.Service.Services;
+using Manager.Service.Storages;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,7 +31,6 @@ builder.Services.Configure<RequestQueueOptions>(
 
 builder.Services.Configure<CacheOptions>(
     builder.Configuration.GetSection(CacheOptions.SectionName));
-
 
 builder.Services.AddCors(options =>
 {
@@ -66,7 +67,7 @@ builder.Services.AddSingleton<IManager, RequestProcessor>();
 builder.Services.AddSingleton<IPlanner, Planner>();
 builder.Services.AddSingleton<IRequestFinalizer, RequestFinalizer>();
 builder.Services.AddSingleton<IRequestStorage, RequestStorage>();
-builder.Services.AddSingleton<ITaskScheduler, Manager.Service.TaskScheduler>();
+builder.Services.AddSingleton<ITaskScheduler, Manager.Service.Services.TaskScheduler>();
 builder.Services.AddSingleton<ITaskStorage, TaskStorage>();
 builder.Services.AddSingleton<IWorkerMonitor, WorkerMonitor>();
 builder.Services.AddSingleton<IRequestQueue, RequestQueue>();

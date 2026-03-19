@@ -3,7 +3,7 @@ using Manager.Abstractions.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace Manager.Service;
+namespace Manager.Service.Services;
 
 public class RequestConsumer : BackgroundService, IRequestConsumer
 {
@@ -48,7 +48,7 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
 
             if (_cache.TryGetCached(request.CrackRequest.Hash, request.CrackRequest.MaxLength, out IEnumerable<string>? precomputed))
             {
-                OnPrecomputedValueFound(request, precomputed!);
+                await OnPrecomputedValueFound(request, precomputed!);
                 continue;
             }
 
@@ -74,12 +74,12 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
         _logger.LogInformation("Tasks assigned for workers for request {request.Id}.", request.Id);
     }
 
-    private void OnPrecomputedValueFound(IRequestInfo request, IEnumerable<string> precomputed)
+    private async Task OnPrecomputedValueFound(IRequestInfo request, IEnumerable<string> precomputed)
     {
-        _logger.LogInformation("Found precomputed answers for hash {Hash} in cache. Setting answers without scheduling to compution.", request.CrackRequest.Hash);
+        _logger.LogInformation("Found precomputed answers {Answeres} for hash {Hash} in cache. Setting answers without scheduling to compution.", precomputed, request.CrackRequest.Hash);
         request.AddResults(precomputed);
         request.Status = RequestStatus.READY;
-        _requestStorage[request.Id.ToString()] = request;
+        await _requestStorage.UpsertAsync(request.Id.ToString(), request);
         _requestCompleted.Set();
     }
 

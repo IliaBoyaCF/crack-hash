@@ -1,6 +1,6 @@
 ﻿using Manager.Abstractions.Model;
 
-namespace Manager.Service;
+namespace Manager.Service.Model;
 
 internal class RequestInfo : IRequestInfo
 {

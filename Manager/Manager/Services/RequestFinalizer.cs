@@ -3,7 +3,7 @@ using Manager.Abstractions.Model;
 using Manager.Abstractions.Services;
 using Microsoft.Extensions.Logging;
 
-namespace Manager.Service;
+namespace Manager.Service.Services;
 
 public class RequestFinalizer : IRequestFinalizer
 {
@@ -25,7 +25,7 @@ public class RequestFinalizer : IRequestFinalizer
 
         _logger.LogInformation("Got response from worker for request {response.RequestId}", response.RequestId);
 
-        var relatedTasks = _taskStorage[response.RequestId];
+        var relatedTasks = await _taskStorage.GetAsync(response.RequestId);
 
         bool allTasksCompleted = true;
 
@@ -43,11 +43,11 @@ public class RequestFinalizer : IRequestFinalizer
             }
         }
 
-        _taskStorage[response.RequestId] = relatedTasks;
+        await _taskStorage.UpsertAsync(response.RequestId, relatedTasks);
 
         _logger.LogInformation("Task ({response.RequestId}, {response.PartNumber}) marked as READY", response.RequestId, response.PartNumber);
 
-        var request = _requestStorage[response.RequestId];
+        var request = await _requestStorage.GetAsync(response.RequestId);
         request.AddResults(response.Answers);
 
         request.Status = request.Status switch
@@ -66,7 +66,7 @@ public class RequestFinalizer : IRequestFinalizer
             _logger.LogInformation("All tasks are READY for request {response.RequestId} so it marked as READY", response.RequestId);
         }
 
-        _requestStorage[response.RequestId] = request;
+        await _requestStorage.UpsertAsync(response.RequestId, request);
         
     }
 }
