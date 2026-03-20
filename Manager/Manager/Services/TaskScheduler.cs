@@ -31,25 +31,20 @@ public class TaskScheduler : ITaskScheduler
 
         string requestId = tasks.First().Request.RequestId;
 
-        await _taskStorage.UpsertAsync(requestId, []);
+        await _taskStorage.UpsertAsync(requestId, [.. tasks]);
 
         _logger.LogInformation($"Created record in task storage for {requestId} request.");
 
-        var scheduledTasks = new List<Task>();
         foreach (var task in tasks)
         {
             var workerApi = _workerApiFactory.CreateWorkerApi(task.WorkerAddress);
-            var scheduledTask = workerApi.AssignTask(task.Request).ContinueWith(async t =>
+            await workerApi.AssignTask(task.Request).ContinueWith(t =>
             {
-                await _taskStorage.UpsertAsync(requestId, [.. await _taskStorage.GetAsync(requestId)]);
-                //_taskStorage[requestId].Add(task);
-                _timeoutMonitor.TryAdd(task.Request.RequestId, task, resetStartedAt: true);
-                
+                _timeoutMonitor.TryAdd(task.Key, task, resetStartedAt: true);
                 _logger.LogInformation($"Assigned task for {task.WorkerAddress} for request: {requestId}");
-            }).Unwrap();
-            scheduledTasks.Add(scheduledTask);
+            });
         }
 
-        await Task.WhenAll(scheduledTasks);
+        _logger.LogInformation("Record in task storage for {requestId} now contains [{elements}]", requestId, string.Join(", ", (await _taskStorage.GetAsync(requestId)).Select(t => t.Key)));
     }
 }

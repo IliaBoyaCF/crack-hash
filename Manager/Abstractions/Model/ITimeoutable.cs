@@ -17,10 +17,8 @@
 /// </remarks>
 public interface ITimeoutable
 {
-    /// <summary>
-    /// Occurs when the timeout interval has been exceeded while timeout tracking is enabled.
-    /// </summary>
-    event EventHandler? Timeout;
+
+    public string Key { get; }
 
     /// <summary>
     /// Gets a value indicating whether timeout tracking is currently active.

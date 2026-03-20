@@ -45,6 +45,8 @@ internal class WorkerTask : IWorkerTask
     private DateTime _monitoringStart = DateTime.MinValue;
     public DateTime StartedAt { get => _monitoringStart; }
 
+    public string Key => Request.RequestId + Request.PartNumber;
+
     public event EventHandler? Timeout;
 
     public void ResetTimeout()

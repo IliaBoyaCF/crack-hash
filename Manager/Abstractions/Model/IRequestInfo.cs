@@ -3,10 +3,10 @@
 public interface IRequestInfo : ITimeoutable
 {
 
-    /// <summary>
-    /// Triggered when a request completes with status: <c>success</c>, <c>partial success</c>, or <c>error</c>.
-    /// </summary>
-    event EventHandler? Completed;
+    ///// <summary>
+    ///// Triggered when a request completes with status: <c>success</c>, <c>partial success</c>, or <c>error</c>.
+    ///// </summary>
+    //event EventHandler? Completed;
     Guid Id { get; }
     CrackRequest CrackRequest { get; }
     RequestStatus Status { get; set; }

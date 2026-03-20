@@ -73,6 +73,7 @@ builder.Services.AddSingleton<IWorkerMonitor, WorkerMonitor>();
 builder.Services.AddSingleton<IRequestQueue, RequestQueue>();
 builder.Services.AddSingleton<ICrackedHashCache, CrachedHashCache>();
 builder.Services.AddSingleton<ITimeoutMonitor<string>, TimeoutMonitor<string>>();
+builder.Services.AddSingleton<IEventBus, EventBus>();
 
 builder.Services.AddSingleton<IWorkerApiFactory, WorkerApiFactory>();
 builder.Services.AddHttpClient();

@@ -1,6 +1,7 @@
 ﻿using Manager.Abstractions.Model;
 using Manager.Abstractions.Options;
 using Manager.Abstractions.Services;
+using Manager.Service.Model;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 

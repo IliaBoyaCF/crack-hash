@@ -1,4 +1,5 @@
 ﻿using Contracts.ManagerToWorker;
+using Manager.Abstractions.Events;
 using Manager.Abstractions.Model;
 using Manager.Abstractions.Services;
 using Microsoft.Extensions.Logging;
@@ -10,14 +11,18 @@ public class RequestFinalizer : IRequestFinalizer
 
     private readonly IRequestStorage _requestStorage;
     private readonly ITaskStorage _taskStorage;
+    private readonly IEventBus _eventBus;
+    private readonly ITimeoutMonitor<string> _timeoutMonitor;
 
     private readonly ILogger<RequestFinalizer> _logger;
 
-    public RequestFinalizer(ITaskStorage taskStorage, IRequestStorage requestStorage, ILogger<RequestFinalizer> logger)
+    public RequestFinalizer(ITaskStorage taskStorage, IRequestStorage requestStorage, ILogger<RequestFinalizer> logger, IEventBus eventBus, ITimeoutMonitor<string> timeoutMonitor)
     {
         _taskStorage = taskStorage;
         _requestStorage = requestStorage;
         _logger = logger;
+        _eventBus = eventBus;
+        _timeoutMonitor = timeoutMonitor;
     }
 
     public async Task ProcessWorkerResponse(CrackHashWorkerResponse response)
@@ -27,7 +32,11 @@ public class RequestFinalizer : IRequestFinalizer
 
         var relatedTasks = await _taskStorage.GetAsync(response.RequestId);
 
+        _logger.LogInformation("Related tasks count: {Count}, [{elements}]", relatedTasks.Count, string.Join(", ", relatedTasks.Select(t => t.Key)));
+
         bool allTasksCompleted = true;
+
+        string completedTaskKey = null;
 
         foreach (var task in relatedTasks)
         {
@@ -35,6 +44,7 @@ public class RequestFinalizer : IRequestFinalizer
             if (task.Request.PartNumber == response.PartNumber)
             {
                 task.Status = RequestStatus.READY;
+                completedTaskKey = task.Key;
             }
 
             if (task.Status != RequestStatus.READY)
@@ -44,6 +54,12 @@ public class RequestFinalizer : IRequestFinalizer
         }
 
         await _taskStorage.UpsertAsync(response.RequestId, relatedTasks);
+        if (completedTaskKey == null)
+        {
+            _logger.LogWarning("Got unknown task with key {key}", completedTaskKey);
+            return;
+        }
+        _timeoutMonitor.TryRemove(completedTaskKey);
 
         _logger.LogInformation("Task ({response.RequestId}, {response.PartNumber}) marked as READY", response.RequestId, response.PartNumber);
 
@@ -55,18 +71,18 @@ public class RequestFinalizer : IRequestFinalizer
             RequestStatus.ERROR => RequestStatus.READY_WITH_FAULTS,
             RequestStatus.READY_WITH_FAULTS => RequestStatus.READY_WITH_FAULTS,
             RequestStatus.READY => RequestStatus.READY,
-            _ => RequestStatus.IN_PROGRESS_PARTIAL_READY,
+            _ => allTasksCompleted ? RequestStatus.READY : RequestStatus.IN_PROGRESS_PARTIAL_READY,
         };
 
         _logger.LogInformation("Answers from task ({response.RequestId}, {response.PartNumber}) have been added to request {response.RequestId}", response.RequestId, response.PartNumber, response.RequestId);
 
+        await _requestStorage.UpsertAsync(response.RequestId, request);
+        
         if (allTasksCompleted)
         {
-            request.Status = RequestStatus.READY;
+            _eventBus.Publish(new RequestCompletionEvent() { Source = request });
             _logger.LogInformation("All tasks are READY for request {response.RequestId} so it marked as READY", response.RequestId);
         }
 
-        await _requestStorage.UpsertAsync(response.RequestId, request);
-        
     }
 }

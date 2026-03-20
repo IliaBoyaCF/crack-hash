@@ -1,4 +1,5 @@
-﻿using Manager.Abstractions.Exceptions;
+﻿using Manager.Abstractions.Events;
+using Manager.Abstractions.Exceptions;
 using Manager.Abstractions.Model;
 using Manager.Abstractions.Options;
 using Manager.Abstractions.Services;
@@ -8,23 +9,33 @@ using Microsoft.Extensions.Options;
 
 namespace Manager.Service.Services;
 
-public class RequestProcessor : IManager
+public class RequestProcessor : IManager, IDisposable
 {
 
     private readonly IRequestStorage _requestStorage;
     private readonly IRequestQueue _requestQueue;
     private readonly ICrackedHashCache _cache;
     private readonly IOptions<TimeoutOptions> _timeoutOptions;
+    private readonly IEventBus _eventBus;
+
+    private readonly IDisposable _requestTimeoutSubscribtion;
 
     private readonly ILogger<RequestProcessor> _logger;
 
-    public RequestProcessor(IOptions<TimeoutOptions> timeoutOptions, IRequestStorage requestStorage, ILogger<RequestProcessor> logger, IRequestQueue requestQueue, ICrackedHashCache cache)
+    public RequestProcessor(IOptions<TimeoutOptions> timeoutOptions, IRequestStorage requestStorage, ILogger<RequestProcessor> logger, IRequestQueue requestQueue, ICrackedHashCache cache, IEventBus eventBus)
     {
         _timeoutOptions = timeoutOptions;
         _requestStorage = requestStorage;
         _logger = logger;
         _requestQueue = requestQueue;
         _cache = cache;
+        _eventBus = eventBus;
+        _requestTimeoutSubscribtion = _eventBus.Subscribe<TimeoutEvent>(OnRequestTimeout);
+    }
+
+    public void Dispose()
+    {
+        _requestTimeoutSubscribtion.Dispose();
     }
 
     public async Task<IRequestInfo> GetStatusAsync(Guid requestId)
@@ -56,8 +67,8 @@ public class RequestProcessor : IManager
             Status = RequestStatus.IN_PROGRESS 
         };
 
-        savedRequest.Timeout += OnRequestTimeout;
-        savedRequest.Completed += OnRequestCompleted;
+        //savedRequest.Timeout += OnRequestTimeout;
+        //savedRequest.Completed += OnRequestCompleted;
 
         await _requestStorage.UpsertAsync(requestIdStr, savedRequest);
         if (_cache.TryGetCached(request.Hash, request.MaxLength, out IEnumerable<string>? answers))
@@ -110,6 +121,28 @@ public class RequestProcessor : IManager
                 requestInfo.Status = RequestStatus.ERROR;
                 break;
         }
-        requestInfo.Timeout -= OnRequestTimeout;
+        //requestInfo.Timeout -= OnRequestTimeout;
     }
+    private void OnRequestTimeout(TimeoutEvent @event)
+    {
+        if (@event.Source is IRequestInfo requestInfo)
+        {
+            switch (requestInfo.Status)
+            {
+                case RequestStatus.READY_WITH_FAULTS:
+                case RequestStatus.IN_PROGRESS_PARTIAL_READY:
+                    _logger.LogInformation("Marking request as {RequestStatus} due to timeout and partial success.", RequestStatus.READY_WITH_FAULTS);
+                    requestInfo.Status = RequestStatus.READY_WITH_FAULTS;
+                    break;
+                case RequestStatus.READY:
+                    break;
+                default:
+                    _logger.LogInformation($"Marking request as ERROR due to timeout");
+                    requestInfo.Status = RequestStatus.ERROR;
+                    break;
+            }
+            Task.Run(() => _requestStorage.UpsertAsync(requestInfo.Id.ToString(), requestInfo));
+        }
+    }
+
 }

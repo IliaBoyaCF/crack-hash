@@ -1,4 +1,5 @@
-﻿using Manager.Abstractions.Model;
+﻿using Manager.Abstractions.Events;
+using Manager.Abstractions.Model;
 using Manager.Abstractions.Options;
 using Manager.Abstractions.Services;
 using Microsoft.Extensions.Hosting;
@@ -8,13 +9,15 @@ using System.Collections.Concurrent;
 
 namespace Manager.Service.Services;
 
-public class TimeoutMonitor<TKey>(IOptions<TimeoutOptions> options, ILogger<TimeoutMonitor<TKey>> logger) : BackgroundService, ITimeoutMonitor<TKey> where TKey : notnull
+public class TimeoutMonitor<TKey>(IOptions<TimeoutOptions> options, ILogger<TimeoutMonitor<TKey>> logger, IEventBus eventBus) : BackgroundService, ITimeoutMonitor<TKey> where TKey : notnull
 {
 
     private readonly ILogger<TimeoutMonitor<TKey>> _logger = logger;
 
     private readonly TimeSpan _checkInterval = options.Value.TimeoutCheckInterval;
     private readonly ConcurrentDictionary<TKey, ITimeoutable> _monitoringItemsDict = [];
+
+    private readonly IEventBus _eventBus = eventBus;
 
     public IEnumerable<TKey> GetTrackedKeys()
     {
@@ -23,6 +26,7 @@ public class TimeoutMonitor<TKey>(IOptions<TimeoutOptions> options, ILogger<Time
 
     public bool TryAdd(TKey key, ITimeoutable timed, bool resetStartedAt = false)
     {
+        _logger.LogInformation("Got {objectName} with timeout interval {interval} for monitoring", timed.GetType().Name, timed.TimeoutInterval);
         if (resetStartedAt)
         {
             timed.ResetTimeout();
@@ -42,6 +46,7 @@ public class TimeoutMonitor<TKey>(IOptions<TimeoutOptions> options, ILogger<Time
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _logger.LogInformation("Timeout monitor started with monitoring period {period}", _checkInterval);
         while (!stoppingToken.IsCancellationRequested)
         {
             await Task.Delay(_checkInterval, stoppingToken);
@@ -68,7 +73,9 @@ public class TimeoutMonitor<TKey>(IOptions<TimeoutOptions> options, ILogger<Time
             {
                 continue;
             }
-            removed?.OnTimeout();
+            removed!.OnTimeout();
+            _eventBus.Publish(new TimeoutEvent { Source = removed });
+            _logger.LogInformation("Timeoutable {timeoutable} has been timeouted.", removed.GetType().Name);
         }
     }
 }

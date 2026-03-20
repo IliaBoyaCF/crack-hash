@@ -70,6 +70,8 @@ internal class RequestInfo : IRequestInfo
     private DateTime _monitoringStart = DateTime.MinValue;
     public DateTime StartedAt { get => _monitoringStart; }
 
+    public string Key => Id.ToString();
+
     public event EventHandler? Timeout;
     public event EventHandler? Completed;
 
