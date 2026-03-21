@@ -8,11 +8,12 @@ namespace Manager.Service.Services;
 
 public class RequestFinalizer : IRequestFinalizer
 {
-
     private readonly IRequestStorage _requestStorage;
     private readonly ITaskStorage _taskStorage;
     private readonly IEventBus _eventBus;
     private readonly ITimeoutMonitor<string> _timeoutMonitor;
+
+    private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
 
     private readonly ILogger<RequestFinalizer> _logger;
 
@@ -30,59 +31,69 @@ public class RequestFinalizer : IRequestFinalizer
 
         _logger.LogInformation("Got response from worker for request {response.RequestId}", response.RequestId);
 
-        var relatedTasks = await _taskStorage.GetAsync(response.RequestId);
+            await _taskStorage.UpdateTaskStatusAsync(response.RequestId, response.PartNumber, RequestStatus.READY);
 
-        _logger.LogInformation("Related tasks count: {Count}, [{elements}]", relatedTasks.Count, string.Join(", ", relatedTasks.Select(t => t.Key)));
+            var relatedTasks = await _taskStorage.GetAsync(response.RequestId);
 
-        bool allTasksCompleted = true;
+            _logger.LogInformation("Related tasks count: {Count}, [{elements}]", relatedTasks.Count, string.Join(", ", relatedTasks.Select(t => $"{t.Key}, {t.Status}")));
 
-        string completedTaskKey = null;
+            bool allTasksCompleted = true;
 
-        foreach (var task in relatedTasks)
-        {
+            string completedTaskKey = null;
 
-            if (task.Request.PartNumber == response.PartNumber)
+            foreach (var task in relatedTasks)
             {
-                task.Status = RequestStatus.READY;
-                completedTaskKey = task.Key;
+
+                if (task.Request.PartNumber == response.PartNumber)
+                {
+                    task.Status = RequestStatus.READY;
+                    completedTaskKey = task.Key;
+                }
+
+                if (task.Status != RequestStatus.READY)
+                {
+                    allTasksCompleted = false;
+                }
             }
 
-            if (task.Status != RequestStatus.READY)
+            //await _taskStorage.UpsertAsync(response.RequestId, relatedTasks);
+
+            if (completedTaskKey == null)
             {
-                allTasksCompleted = false;
+                _logger.LogWarning("Got unknown task with key {key}", completedTaskKey);
+                return;
             }
-        }
+            _timeoutMonitor.TryRemove(completedTaskKey);
 
-        await _taskStorage.UpsertAsync(response.RequestId, relatedTasks);
-        if (completedTaskKey == null)
-        {
-            _logger.LogWarning("Got unknown task with key {key}", completedTaskKey);
-            return;
-        }
-        _timeoutMonitor.TryRemove(completedTaskKey);
+            _logger.LogInformation("Task ({response.RequestId}, {response.PartNumber}) marked as READY", response.RequestId, response.PartNumber);
 
-        _logger.LogInformation("Task ({response.RequestId}, {response.PartNumber}) marked as READY", response.RequestId, response.PartNumber);
+        await _semaphore.WaitAsync();
 
-        var request = await _requestStorage.GetAsync(response.RequestId);
-        request.AddResults(response.Answers);
+            var request = await _requestStorage.GetAsync(response.RequestId);
+            request.AddResults(response.Answers);
 
-        request.Status = request.Status switch
-        {
-            RequestStatus.ERROR => RequestStatus.READY_WITH_FAULTS,
-            RequestStatus.READY_WITH_FAULTS => RequestStatus.READY_WITH_FAULTS,
-            RequestStatus.READY => RequestStatus.READY,
-            _ => allTasksCompleted ? RequestStatus.READY : RequestStatus.IN_PROGRESS_PARTIAL_READY,
-        };
+            request.Status = request.Status switch
+            {
+                RequestStatus.ERROR => RequestStatus.READY_WITH_FAULTS,
+                RequestStatus.READY_WITH_FAULTS => RequestStatus.READY_WITH_FAULTS,
+                RequestStatus.READY => RequestStatus.READY,
+                _ => allTasksCompleted ? RequestStatus.READY : RequestStatus.IN_PROGRESS_PARTIAL_READY,
+            };
 
-        _logger.LogInformation("Answers from task ({response.RequestId}, {response.PartNumber}) have been added to request {response.RequestId}", response.RequestId, response.PartNumber, response.RequestId);
+            _logger.LogInformation("Answers from task ({response.RequestId}, {response.PartNumber}) have been added to request {response.RequestId}", response.RequestId, response.PartNumber, response.RequestId);
 
-        await _requestStorage.UpsertAsync(response.RequestId, request);
-        
-        if (allTasksCompleted)
-        {
-            _eventBus.Publish(new RequestCompletionEvent() { Source = request });
-            _logger.LogInformation("All tasks are READY for request {response.RequestId} so it marked as READY", response.RequestId);
-        }
+            await _requestStorage.UpsertAsync(response.RequestId, request);
+
+            if (allTasksCompleted)
+            {
+                _eventBus.Publish(new RequestCompletionEvent() { Source = request });
+                _logger.LogInformation("All tasks are READY for request {response.RequestId} so it marked as READY", response.RequestId);
+            }
+
+            relatedTasks = await _taskStorage.TryGetAsync(response.RequestId);
+            _logger.LogInformation("On RequestFinalizer processed response task storage: {Count}, [{elements}]", relatedTasks!.Count, string.Join(", ", relatedTasks.Select(t => $"{t.Key}, {t.Status}")));
+
+        _semaphore.Release();
 
     }
 }

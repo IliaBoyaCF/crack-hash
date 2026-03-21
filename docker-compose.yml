@@ -11,9 +11,13 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
-      - ConnectionStrings__MongoDB=mongodb://admin:admin123@mongo:27017/crackhash_db?authSource=admin
+      - ConnectionStrings__MongoDB=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/crackhash_db?replicaSet=rs0
     networks:
       - app-network
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    restart: on-failure
 
   worker-1:
     build:
@@ -54,30 +58,113 @@ services:
     networks:
       - app-network
 
-  mongo:
+  mongo1:
     image: mongo:7.0
-    container_name: crackhash-mongo
-    restart: always
+    container_name: mongo1
+    command: [
+      "mongod",
+      "--replSet", "rs0",
+      "--bind_ip", "localhost,mongo1",
+      "--port", "27017"
+    ]
     ports:
       - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: admin123
-      MONGO_INITDB_DATABASE: crackhash_db
+    # environment:
+    #   MONGO_INITDB_ROOT_USERNAME: admin
+    #   MONGO_INITDB_ROOT_PASSWORD: admin123
     volumes:
-      - mongo-data:/data/db
+      - mongo1-data:/data/db
     networks:
       - app-network
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 20s
+      retries: 5
+      start_period: 30s
+
+  # MongoDB Replica Set Node 2 (Secondary)
+  mongo2:
+    image: mongo:7.0
+    container_name: mongo2
+    command: [
+      "mongod",
+      "--replSet", "rs0",
+      "--bind_ip", "localhost,mongo2",
+      "--port", "27017",
+    ]
+    ports:
+      - "27018:27017"
+    # environment:
+    #   MONGO_INITDB_ROOT_USERNAME: admin
+    #   MONGO_INITDB_ROOT_PASSWORD: admin123
+    volumes:
+      - mongo2-data:/data/db
+    networks:
+      - app-network
+    depends_on:
+      - mongo1
+
+  # MongoDB Replica Set Node 3 (Secondary)
+  mongo3:
+    image: mongo:7.0
+    container_name: mongo3
+    command: [
+      "mongod",
+      "--replSet", "rs0",
+      "--bind_ip", "localhost,mongo3",
+      "--port", "27017",
+    ]
+    ports:
+      - "27019:27017"
+    # environment:
+    #   MONGO_INITDB_ROOT_USERNAME: admin
+    #   MONGO_INITDB_ROOT_PASSWORD: admin123
+    volumes:
+      - mongo3-data:/data/db
+    networks:
+      - app-network
+    depends_on:
+      - mongo1
+
+  # Initializer Replica Set
+  mongo-init:
+    image: mongo:7.0
+    container_name: mongo-init
+    depends_on:
+      - mongo1
+      - mongo2
+      - mongo3
+    networks:
+      - app-network
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        echo "Waiting for MongoDB to start..."
+        sleep 10
+        
+        echo "Initiating replica set..."
+        mongosh "mongodb://mongo1:27017/admin" --eval '
+          rs.initiate({
+            _id: "rs0",
+            members: [
+              { _id: 0, host: "mongo1:27017", priority: 2 },
+              { _id: 1, host: "mongo2:27017", priority: 1 },
+              { _id: 2, host: "mongo3:27017", priority: 1 }
+            ]
+          })
+        '
+        
+        echo "Waiting for primary election..."
+        sleep 10
+        
+        echo "Replica set initialization completed"
+    restart: "no"
 
 volumes:
-  mongo-data:
-    driver: local
+  mongo1-data:
+  mongo2-data:
+  mongo3-data:  
 
 networks:
   app-network:

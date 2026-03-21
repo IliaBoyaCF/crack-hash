@@ -14,7 +14,6 @@ public static class WorkerTaskEntityExtentions
             {
                 RequestId = entity.TaskId.RequestId,
                 PartNumber = entity.TaskId.PartNumber,
-                PartCount = entity.TaskId.PartCount,
                 Hash = entity.Hash,
                 MaxLength = entity.MaxLength,
                 Alphabet = entity.Alphabet,

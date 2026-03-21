@@ -24,9 +24,8 @@ public class WorkerTaskId
 {
     public string RequestId { get; set; }
     public int PartNumber { get; set; }
-    public int PartCount { get; set; }
     public override string ToString()
     {
-        return $"{RequestId}_{PartNumber}_{PartCount}";
+        return $"{RequestId}_{PartNumber}";
     }
 }

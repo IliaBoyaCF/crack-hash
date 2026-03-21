@@ -31,6 +31,11 @@ public class TaskScheduler : ITaskScheduler
 
         string requestId = tasks.First().Request.RequestId;
 
+        foreach (var task in tasks)
+        {
+            _timeoutMonitor.TryAdd(task.Key, task, resetStartedAt: true);
+        }
+
         await _taskStorage.UpsertAsync(requestId, [.. tasks]);
 
         _logger.LogInformation($"Created record in task storage for {requestId} request.");
@@ -40,12 +45,9 @@ public class TaskScheduler : ITaskScheduler
             var workerApi = _workerApiFactory.CreateWorkerApi(task.WorkerAddress);
             await workerApi.AssignTask(task.Request).ContinueWith(t =>
             {
-                _timeoutMonitor.TryAdd(task.Key, task, resetStartedAt: true);
                 _logger.LogInformation($"Assigned task for {task.WorkerAddress} for request: {requestId}");
             });
         }
-
-        await _taskStorage.UpsertAsync(requestId, [.. tasks]);
 
         _logger.LogInformation("Record in task storage for {requestId} now contains [{elements}]", requestId, string.Join(", ", (await _taskStorage.GetAsync(requestId)).Select(t => t.Key)));
     }

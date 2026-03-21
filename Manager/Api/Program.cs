@@ -20,9 +20,9 @@ Log.Logger = new LoggerConfiguration()
 builder.Host.UseSerilog();
 
 var mongoConnectionString = builder.Configuration.GetConnectionString("MongoDB");
-
 var mongoUrl = new MongoUrl(mongoConnectionString);
 var settings = MongoClientSettings.FromConnectionString(mongoConnectionString);
+settings.WriteConcern = WriteConcern.WMajority.With(journal: true);
 DB dbInstance = await DB.InitAsync(mongoUrl.DatabaseName, settings);
 
 builder.Services.AddSingleton(dbInstance);

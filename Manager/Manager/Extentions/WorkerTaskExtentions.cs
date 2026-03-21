@@ -11,7 +11,6 @@ public static class WorkerTaskExtentions
         {
             RequestId = task.Request.RequestId,
             PartNumber = task.Request.PartNumber,
-            PartCount = task.Request.PartCount,
         };
         return new WorkerTaskEntity
         {

@@ -104,8 +104,9 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
 
     private async Task OnUnprocessedRequestTimeout(IRequestInfo request)
     {
-        request.OnTimeout();
-        await _requestStorage.UpsertAsync(request.Key, request);
+        var actualRequest = await _requestStorage.GetAsync(request.Key);
+        actualRequest.OnTimeout();
+        await _requestStorage.UpsertAsync(actualRequest.Key, actualRequest);
         _requestCompleted.Set();
     }
 

@@ -218,4 +218,25 @@ public abstract class MongoDBPersistentStorage<TKey, TValue, TEntity> : IStorage
             throw;
         }
     }
+
+    public virtual async Task UpdatePartialAsync(
+        TKey key,
+        Action<Update<TEntity>> updateAction,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var update = _db.Update<TEntity>();
+            update.MatchID(GetEntityId(key));
+            updateAction(update);
+            await update.ExecuteAsync(cancellationToken);
+
+            _logger.LogDebug("Partial update applied to entity with key {Key}", key);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during partial update of entity with key {Key}", key);
+            throw;
+        }
+    }
 }
