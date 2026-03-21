@@ -51,9 +51,10 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
 
             if (request.IsTimeoutEnabled && now - request.StartedAt >= request.TimeoutInterval)
             {
-                OnUnprocessedRequestTimeout(request);
+                await OnUnprocessedRequestTimeout(request);
                 continue;
             }
+            _logger.LogInformation("Checking for cached value with cache key {cacheKey}", (request.CrackRequest.Hash, request.CrackRequest.MaxLength));
 
             if (_cache.TryGetCached(request.CrackRequest.Hash, request.CrackRequest.MaxLength, out IEnumerable<string>? precomputed))
             {
@@ -78,6 +79,8 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
 
         _timeoutMonitor.TryAdd(request.Id.ToString(), request, resetStartedAt: true);
 
+        await _requestStorage.UpsertAsync(request.Key, request);
+
         _logger.LogInformation("Tasks assigned for workers for request {request.Id}.", request.Id);
     }
 
@@ -86,21 +89,29 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
         _logger.LogInformation("Found precomputed answers {Answeres} for hash {Hash} in cache. Setting answers without scheduling to compution.", precomputed, request.CrackRequest.Hash);
         request.AddResults(precomputed);
         request.Status = RequestStatus.READY;
-        await _requestStorage.UpsertAsync(request.Id.ToString(), request);
+        await _requestStorage.UpsertAsync(request.Key, request);
+        _eventBus.Publish(new RequestCompletionEvent { Source = request });
         _requestCompleted.Set();
     }
 
-    private void OnUnprocessedRequestTimeout(IRequestInfo request)
+    private async Task OnUnprocessedRequestTimeout(IRequestInfo request)
     {
         _requestCompleted.Set();
         request.OnTimeout();
+        await _requestStorage.UpsertAsync(request.Key, request);
     }
 
     private void OnRequestCompleted(RequestCompletionEvent @event) 
     {
+        if (@event.CompletedFromCache)
+        {
+            return;
+        }
+        _logger.LogInformation("Request {requestId} completed. Trying to cache results (cache key {cacheKey}).", @event.Source.Id, (@event.Source.CrackRequest.Hash, @event.Source.CrackRequest.MaxLength));
         _requestCompleted.Set();
-        _timeoutMonitor.TryRemove(@event.Source.Id.ToString());
-        _cache.TryAdd(@event.Source.CrackRequest.Hash, @event.Source.CrackRequest.MaxLength, @event.Source.Data!);
+        _timeoutMonitor.TryRemove(@event.Source.Key);
+        var cached = _cache.TryAdd(@event.Source.CrackRequest.Hash, @event.Source.CrackRequest.MaxLength, @event.Source.Data!);
+        _logger.LogInformation("{Status} to cache results for request {requestId}", cached ? "Successfull attempt" : "Failed attempt", @event.Source.Id);
     }
 
     private void OnRequestTimeout(TimeoutEvent @event)

@@ -1,13 +1,16 @@
 ﻿using Manager.Abstractions.Model;
-using MongoDB.Bson.Serialization.Attributes;
-using MongoDB.Extensions.Repository.Models;
+using MongoDB.Entities;
 
-namespace Manager.Abstractions.Entities;
+namespace Manager.Service.Entities;
 
-public class WorkerTaskEntity : MongoEntity
+public class WorkerTaskEntity : Entity
 {
-    [BsonId]
-    public WorkerTaskId Id { get; set; }
+    
+    public WorkerTaskId TaskId { get; set; }
+
+    public int MaxLength { get; set; }
+
+    public string[] Alphabet { get; set; }
 
     public string Hash { get; set; }
     public RequestStatus Status { get; set; }

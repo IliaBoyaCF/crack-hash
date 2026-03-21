@@ -1,6 +1,4 @@
-﻿using Manager.Abstractions.Entities;
-
-namespace Manager.Abstractions.Services;
+﻿namespace Manager.Abstractions.Services;
 
 public interface IStorage<TKey, TValue> where TKey : notnull
 {

@@ -45,6 +45,8 @@ public class TaskScheduler : ITaskScheduler
             });
         }
 
+        await _taskStorage.UpsertAsync(requestId, [.. tasks]);
+
         _logger.LogInformation("Record in task storage for {requestId} now contains [{elements}]", requestId, string.Join(", ", (await _taskStorage.GetAsync(requestId)).Select(t => t.Key)));
     }
 }

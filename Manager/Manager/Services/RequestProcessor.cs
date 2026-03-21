@@ -57,7 +57,6 @@ public class RequestProcessor : IManager, IDisposable
     {
         _logger.LogInformation($"Got crack request for hash: {request.Hash} and max length {request.MaxLength}");
         Guid requestId = Guid.NewGuid();
-        string requestIdStr = requestId.ToString();
 
         var savedRequest = new RequestInfo 
         { 
@@ -67,15 +66,14 @@ public class RequestProcessor : IManager, IDisposable
             Status = RequestStatus.IN_PROGRESS 
         };
 
-        //savedRequest.Timeout += OnRequestTimeout;
-        //savedRequest.Completed += OnRequestCompleted;
-
-        await _requestStorage.UpsertAsync(requestIdStr, savedRequest);
+        await _requestStorage.UpsertAsync(savedRequest.Key, savedRequest);
         if (_cache.TryGetCached(request.Hash, request.MaxLength, out IEnumerable<string>? answers))
         {
             _logger.LogInformation("Found precomputed answers for hash {Hash} in cache. Setting answers without scheduling to compution.", request.Hash);
             savedRequest.Status = RequestStatus.READY;
             savedRequest.AddResults(answers!);
+            await _requestStorage.UpsertAsync(savedRequest.Key, savedRequest);
+            _eventBus.Publish(new RequestCompletionEvent { Source = savedRequest, CompletedFromCache = true });
         }
         else
         {
@@ -88,41 +86,6 @@ public class RequestProcessor : IManager, IDisposable
 
     }
 
-    private void OnRequestCompleted(object? sender, EventArgs e)
-    {
-        if (sender is RequestInfo requestInfo)
-        {
-            requestInfo.Timeout -= OnRequestTimeout;
-            requestInfo.Completed -= OnRequestCompleted;
-        }
-    }
-
-    private void OnRequestTimeout(object? sender, EventArgs e)
-    {
-        if (sender is RequestInfo requestInfo)
-        {
-            OnRequestTimeout(requestInfo);
-        }
-    }
-
-    private void OnRequestTimeout(IRequestInfo requestInfo)
-    {
-        switch (requestInfo.Status)
-        {
-            case RequestStatus.READY_WITH_FAULTS:
-            case RequestStatus.IN_PROGRESS_PARTIAL_READY:
-                _logger.LogInformation("Marking request as {RequestStatus} due to timeout and partial success.", RequestStatus.READY_WITH_FAULTS);
-                requestInfo.Status = RequestStatus.READY_WITH_FAULTS;
-                break;
-            case RequestStatus.READY:
-                break;
-            default:
-                _logger.LogInformation($"Marking request as ERROR due to timeout");
-                requestInfo.Status = RequestStatus.ERROR;
-                break;
-        }
-        //requestInfo.Timeout -= OnRequestTimeout;
-    }
     private void OnRequestTimeout(TimeoutEvent @event)
     {
         if (@event.Source is IRequestInfo requestInfo)

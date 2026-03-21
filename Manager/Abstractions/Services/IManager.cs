@@ -1,5 +1,4 @@
-﻿using Contracts.ManagerToWorker;
-using Manager.Abstractions.Model;
+﻿using Manager.Abstractions.Model;
 
 namespace Manager.Abstractions.Services
 {

@@ -43,7 +43,7 @@ internal class WorkerTask : IWorkerTask
     }
 
     private DateTime _monitoringStart = DateTime.MinValue;
-    public DateTime StartedAt { get => _monitoringStart; }
+    public DateTime StartedAt { get => _monitoringStart; init => _monitoringStart = value; }
 
     public string Key => Request.RequestId + Request.PartNumber;
 

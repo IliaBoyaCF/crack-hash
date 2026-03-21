@@ -68,7 +68,7 @@ internal class RequestInfo : IRequestInfo
     public bool IsTimeoutEnabled { get => _tracked; set => Interlocked.Exchange(ref _tracked, value); }
 
     private DateTime _monitoringStart = DateTime.MinValue;
-    public DateTime StartedAt { get => _monitoringStart; }
+    public DateTime StartedAt { get => _monitoringStart; init => _monitoringStart = value; }
 
     public string Key => Id.ToString();
 

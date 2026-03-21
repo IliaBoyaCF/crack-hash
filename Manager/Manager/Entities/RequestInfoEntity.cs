@@ -1,13 +1,12 @@
 ﻿using Manager.Abstractions.Model;
 using MongoDB.Entities;
-using MongoDB.Extensions.Repository.Models;
 
-namespace Manager.Abstractions.Entities;
+namespace Manager.Service.Entities;
 
-public class RequestInfoEntity : MongoEntity
+public class RequestInfoEntity : Entity
 {
-    public string Id { get; set; }
-    public string Hash { get; set; }
+    public required string Hash { get; set; }
+    public int MaxLength { get; set; }
     public RequestStatus Status { get; set; }
     public List<string>? Data { get; set; }
     public bool IsTimeoutEnabled { get; set; }
