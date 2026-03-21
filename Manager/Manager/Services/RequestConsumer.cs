@@ -47,6 +47,13 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
             _requestCompleted.Wait(stoppingToken);
             _requestCompleted.Reset();
 
+            if (request.Status != RequestStatus.PENDING)
+            {
+                _requestCompleted.Set();
+                continue;
+            }
+
+
             var now = DateTime.UtcNow;
 
             if (request.IsTimeoutEnabled && now - request.StartedAt >= request.TimeoutInterval)
@@ -78,6 +85,7 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
         await _taskScheduler.ScheduleAsync(tasks);
 
         _timeoutMonitor.TryAdd(request.Id.ToString(), request, resetStartedAt: true);
+        request.Status = RequestStatus.IN_PROGRESS;
 
         await _requestStorage.UpsertAsync(request.Key, request);
 
@@ -96,9 +104,9 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
 
     private async Task OnUnprocessedRequestTimeout(IRequestInfo request)
     {
-        _requestCompleted.Set();
         request.OnTimeout();
         await _requestStorage.UpsertAsync(request.Key, request);
+        _requestCompleted.Set();
     }
 
     private void OnRequestCompleted(RequestCompletionEvent @event) 
@@ -108,10 +116,10 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
             return;
         }
         _logger.LogInformation("Request {requestId} completed. Trying to cache results (cache key {cacheKey}).", @event.Source.Id, (@event.Source.CrackRequest.Hash, @event.Source.CrackRequest.MaxLength));
-        _requestCompleted.Set();
         _timeoutMonitor.TryRemove(@event.Source.Key);
         var cached = _cache.TryAdd(@event.Source.CrackRequest.Hash, @event.Source.CrackRequest.MaxLength, @event.Source.Data!);
         _logger.LogInformation("{Status} to cache results for request {requestId}", cached ? "Successfull attempt" : "Failed attempt", @event.Source.Id);
+        _requestCompleted.Set();
     }
 
     private void OnRequestTimeout(TimeoutEvent @event)
@@ -119,8 +127,8 @@ public class RequestConsumer : BackgroundService, IRequestConsumer
         var source = @event.Source;
         if (source is RequestInfo requestInfo)
         {
-            _requestCompleted.Set();
             _logger.LogInformation("Start processing next queued request due to {requestId} request is timeouted.", requestInfo.Id);
+            _requestCompleted.Set();
         }
     }
 

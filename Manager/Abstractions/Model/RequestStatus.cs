@@ -5,6 +5,7 @@ namespace Manager.Abstractions.Model
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum RequestStatus
     {
+        PENDING,
         IN_PROGRESS,
         IN_PROGRESS_PARTIAL_READY,
         READY_WITH_FAULTS,

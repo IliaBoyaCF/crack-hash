@@ -1,6 +1,7 @@
 using Manager.Abstractions.Model;
 using Manager.Abstractions.Services;
 using Manager.Api.Dtos;
+using Manager.Api.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Manager.Api.Controllers
@@ -17,13 +18,20 @@ namespace Manager.Api.Controllers
         [HttpPost("crack")]
         public async Task<JsonResult> Crack([FromBody] CrackRequest crackRequest)
         {
-            var reqId = await _manager.RegisterAsync(crackRequest);
+            try
+            {
+                var reqId = await _manager.RegisterAsync(crackRequest);
 
-            return new JsonResult(
-                new
-                {
-                    requestId = reqId,
-                });
+                return new JsonResult(
+                    new
+                    {
+                        requestId = reqId,
+                    });
+            }
+            catch (OverflowException)
+            {
+                throw new QueueOverflowException("Server busy. No available place in queue.");
+            }
         }
 
         [HttpGet("status")]

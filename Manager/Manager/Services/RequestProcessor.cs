@@ -55,6 +55,12 @@ public class RequestProcessor : IManager, IDisposable
 
     public async Task<Guid> RegisterAsync(CrackRequest request)
     {
+
+        if (_requestQueue.Count >= _requestQueue.Capacity)
+        {
+            throw new OverflowException("Request queue is overflowed.");
+        }
+
         _logger.LogInformation($"Got crack request for hash: {request.Hash} and max length {request.MaxLength}");
         Guid requestId = Guid.NewGuid();
 
@@ -63,7 +69,7 @@ public class RequestProcessor : IManager, IDisposable
             Id = requestId,
             CrackRequest = request,
             TimeoutInterval = _timeoutOptions.Value.RequestTimeout, 
-            Status = RequestStatus.IN_PROGRESS 
+            Status = RequestStatus.PENDING 
         };
 
         await _requestStorage.UpsertAsync(savedRequest.Key, savedRequest);

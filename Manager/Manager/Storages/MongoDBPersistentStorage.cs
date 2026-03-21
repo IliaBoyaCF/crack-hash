@@ -11,9 +11,10 @@ public abstract class MongoDBPersistentStorage<TKey, TValue, TEntity> : IStorage
 {
     private readonly Func<TKey, TValue, TEntity> _toEntity;
     private readonly Func<TKey, TEntity, TValue> _toValue;
-    private readonly ILogger<MongoDBPersistentStorage<TKey, TValue, TEntity>> _logger;
 
-    private readonly DB _db;
+    protected readonly ILogger<MongoDBPersistentStorage<TKey, TValue, TEntity>> _logger;
+
+    protected readonly DB _db;
 
     protected MongoDBPersistentStorage(
         Func<TKey, TValue, TEntity> toEntity,

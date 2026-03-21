@@ -73,17 +73,21 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddProblemDetails();
 
-builder.Services.AddSingleton<IManager, RequestProcessor>();
-builder.Services.AddSingleton<IPlanner, Planner>();
-builder.Services.AddSingleton<IRequestFinalizer, RequestFinalizer>();
+builder.Services.AddSingleton<IEventBus, EventBus>();
+
 builder.Services.AddSingleton<IRequestStorage, RequestPersistentStorage>();
-builder.Services.AddSingleton<ITaskScheduler, Manager.Service.Services.TaskScheduler>();
 builder.Services.AddSingleton<ITaskStorage, WorkerTaskPersistentStorage>();
-builder.Services.AddSingleton<IWorkerMonitor, WorkerMonitor>();
 builder.Services.AddSingleton<IRequestQueue, RequestQueue>();
 builder.Services.AddSingleton<ICrackedHashCache, CrachedHashCache>();
+
+builder.Services.AddSingleton<IWorkerMonitor, WorkerMonitor>();
 builder.Services.AddSingleton<ITimeoutMonitor<string>, TimeoutMonitor<string>>();
-builder.Services.AddSingleton<IEventBus, EventBus>();
+builder.Services.AddSingleton<IRequestRecovery, RequestRecovery>();
+
+builder.Services.AddSingleton<IManager, RequestProcessor>();
+builder.Services.AddSingleton<IPlanner, Planner>();
+builder.Services.AddSingleton<ITaskScheduler, Manager.Service.Services.TaskScheduler>();
+builder.Services.AddSingleton<IRequestFinalizer, RequestFinalizer>();
 
 builder.Services.AddSingleton<IWorkerApiFactory, WorkerApiFactory>();
 builder.Services.AddHttpClient();
@@ -92,6 +96,9 @@ builder.Services.AddHostedService<RequestConsumer>();
 builder.Services.AddHostedService(sp => (TimeoutMonitor<string>)sp.GetRequiredService<ITimeoutMonitor<string>>());
 
 var app = builder.Build();
+
+var recoveryService = app.Services.GetRequiredService<IRequestRecovery>();
+await recoveryService.RecoverAsync();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
