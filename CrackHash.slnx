@@ -12,5 +12,6 @@
   <Folder Name="/Элементы решения/">
     <File Path="docker-compose.yml" />
   </Folder>
+  <Project Path="Common/Common.csproj" Id="8feeffc4-a305-49e8-90a6-17c9148c1b77" />
   <Project Path="Contracts/Contracts.csproj" Id="e795c7c8-c4e8-475c-8824-7b26c24a08e3" />
 </Solution>

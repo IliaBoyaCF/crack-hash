@@ -1,3 +1,4 @@
+using Common.Options;
 using Contracts.ManagerToWorker;
 using Manager.Abstractions.Options;
 using Manager.Abstractions.Services;
@@ -41,6 +42,12 @@ builder.Services.Configure<RequestQueueOptions>(
 
 builder.Services.Configure<CacheOptions>(
     builder.Configuration.GetSection(CacheOptions.SectionName));
+
+builder.Services.Configure<TaskQueueRabbitMQOptions>(
+    builder.Configuration.GetSection(TaskQueueRabbitMQOptions.SectionName));
+
+builder.Services.Configure<ResponseQueueRabbitMQOptions>(
+    builder.Configuration.GetSection(ResponseQueueRabbitMQOptions.SectionName));
 
 builder.Services.AddCors(options =>
 {
@@ -86,13 +93,14 @@ builder.Services.AddSingleton<IRequestRecovery, RequestRecovery>();
 
 builder.Services.AddSingleton<IManager, RequestProcessor>();
 builder.Services.AddSingleton<IPlanner, Planner>();
-builder.Services.AddSingleton<ITaskScheduler, Manager.Service.Services.TaskScheduler>();
+builder.Services.AddSingleton<ITaskScheduler, TaskPublisher>();
 builder.Services.AddSingleton<IRequestFinalizer, RequestFinalizer>();
 
 builder.Services.AddSingleton<IWorkerApiFactory, WorkerApiFactory>();
 builder.Services.AddHttpClient();
 
 builder.Services.AddHostedService<RequestConsumer>();
+builder.Services.AddHostedService<ResponseConsumer>();
 builder.Services.AddHostedService(sp => (TimeoutMonitor<string>)sp.GetRequiredService<ITimeoutMonitor<string>>());
 
 var app = builder.Build();

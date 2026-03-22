@@ -8,9 +8,12 @@
 
   <ItemGroup>
     <PackageReference Include="Kaos.Combinatorics" Version="5.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.3" />
+    <PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Common\Common.csproj" />
     <ProjectReference Include="..\Abstractions\Worker.Abstractions.csproj" />
   </ItemGroup>
 

@@ -8,9 +8,11 @@
 
   <ItemGroup>
     <PackageReference Include="MongoDB.Entities" Version="25.0.0" />
+    <PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Common\Common.csproj" />
     <ProjectReference Include="..\Abstractions\Manager.Abstractions.csproj" />
   </ItemGroup>
 

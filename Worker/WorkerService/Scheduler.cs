@@ -26,7 +26,7 @@ namespace Worker.Service
             var task = Task.Factory.StartNew(           
                 () => 
                 {
-                    var task = _executor.Execute(request).ContinueWith(t => _finalizer.CompleteRequest(t.Result)).Unwrap();
+                    var task = _executor.Execute(request).ContinueWith(t => _finalizer.CompleteRequestAsync(t.Result)).Unwrap();
                     task.Wait();
                 },
                 CancellationToken.None,

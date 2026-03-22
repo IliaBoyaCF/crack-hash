@@ -26,7 +26,7 @@ public class RequestFinalizer : IRequestFinalizer
         _timeoutMonitor = timeoutMonitor;
     }
 
-    public async Task ProcessWorkerResponse(CrackHashWorkerResponse response)
+    public async Task ProcessWorkerResponseAsync(CrackHashWorkerResponse response)
     {
 
         _logger.LogInformation("Got response from worker for request {response.RequestId}", response.RequestId);
