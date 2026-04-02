@@ -90,6 +90,7 @@ builder.Services.AddSingleton<ICrackedHashCache, CrachedHashCache>();
 builder.Services.AddSingleton<IWorkerMonitor, WorkerMonitor>();
 builder.Services.AddSingleton<ITimeoutMonitor<string>, TimeoutMonitor<string>>();
 builder.Services.AddSingleton<IRequestRecovery, RequestRecovery>();
+builder.Services.AddSingleton<IRequestProgressService, RequestProgressService>();
 
 builder.Services.AddSingleton<IManager, RequestProcessor>();
 builder.Services.AddSingleton<IPlanner, Planner>();

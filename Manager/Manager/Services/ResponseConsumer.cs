@@ -1,8 +1,6 @@
 ﻿using Common.Options;
 using Common.Utils;
 using Contracts.ManagerToWorker;
-using Manager.Abstractions.Events;
-using Manager.Abstractions.Model;
 using Manager.Abstractions.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

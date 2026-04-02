@@ -77,6 +77,7 @@ public class ResponsePublisher : IFinalizer, IAsyncDisposable
 
     public async Task CompleteRequestAsync(CrackHashWorkerResponse response)
     {
+        // TODO: Requeue
         try
         {
 

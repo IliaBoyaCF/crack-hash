@@ -1,9 +1,11 @@
 ﻿using Contracts.ManagerToWorker;
 
-namespace Worker.Abstractions
+namespace Worker.Abstractions;
+
+public interface IWorker
 {
-    public interface IWorker
-    {
-        Task Schedule(CrackHashManagerRequest request);
-    }
+
+    Task Schedule(CrackHashManagerRequest request);
+
+    (string requestId, int partNumber, int partCount, float)? TaskProgress();
 }

@@ -12,8 +12,13 @@ namespace Manager.Api.Controllers
     {
 
         private readonly IManager _manager;
+        private readonly IRequestProgressService _requestProgressService;
 
-        public ClientController(IManager manager) => _manager = manager;
+        public ClientController(IManager manager, IRequestProgressService requestProgressService)
+        {
+            _manager = manager;
+            _requestProgressService = requestProgressService;
+        }
 
         [HttpPost("crack")]
         public async Task<JsonResult> Crack([FromBody] CrackRequest crackRequest)
@@ -38,7 +43,8 @@ namespace Manager.Api.Controllers
         public async Task<RequestInfoDto> Status([FromQuery] Guid requestId)
         {
             var requestInfo = await _manager.GetStatusAsync(requestId);
-            return requestInfo.ToDto();
+            float progress = await _requestProgressService.GetProgressAsync(requestId);
+            return requestInfo.ToDto(progress);
         }
 
     }

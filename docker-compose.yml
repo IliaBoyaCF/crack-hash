@@ -120,7 +120,7 @@ services:
         '
         
         echo "Waiting for primary election..."
-        sleep 10
+        sleep 5
         
         echo "Replica set initialization completed"
     restart: "no"
