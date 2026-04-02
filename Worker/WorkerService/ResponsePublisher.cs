@@ -77,32 +77,35 @@ public class ResponsePublisher : IFinalizer, IAsyncDisposable
 
     public async Task CompleteRequestAsync(CrackHashWorkerResponse response)
     {
-        // TODO: Requeue
-        try
+        while (true)
         {
-
-            var xml = XmlSerializationUtils.Serialize(response);
-            var body = Encoding.UTF8.GetBytes(xml);
-
-            var properties = new BasicProperties
+            try
             {
-                Persistent = _options.Durable,
-                ContentType = "application/xml",
-                DeliveryMode = DeliveryModes.Persistent
-            };
 
-            await _channel.BasicPublishAsync(
-                exchange: _options.ExchangeName,
-                routingKey: _options.RoutingKey,
-                mandatory: true,
-                basicProperties: properties,
-                body: body);
+                var xml = XmlSerializationUtils.Serialize(response);
+                var body = Encoding.UTF8.GetBytes(xml);
 
-            _logger.LogInformation("Response for request ({RequestId}, {PartNumber}) published to queue", response.RequestId, response.PartNumber);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to publish response for request ({RequestId}, {PartNumber}) to queue", response.RequestId, response.PartNumber);
+                var properties = new BasicProperties
+                {
+                    Persistent = _options.Durable,
+                    ContentType = "application/xml",
+                    DeliveryMode = DeliveryModes.Persistent
+                };
+
+                await _channel.BasicPublishAsync(
+                    exchange: _options.ExchangeName,
+                    routingKey: _options.RoutingKey,
+                    mandatory: true,
+                    basicProperties: properties,
+                    body: body);
+
+                _logger.LogInformation("Response for request ({RequestId}, {PartNumber}) published to queue", response.RequestId, response.PartNumber);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to publish response for request ({RequestId}, {PartNumber}) to queue", response.RequestId, response.PartNumber);
+            }
         }
     }
 

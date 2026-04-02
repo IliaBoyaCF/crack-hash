@@ -15,8 +15,6 @@ public class Executor : IExecutor
     private long currentTaskComputedNumber = 1L;
     public float CurrentTaskProgress { get => (float)currentTaskComputedNumber / currentTaskSize; }
 
-    public CrackHashManagerRequest? TaskBeingExecuted { get; private set; } = null;
-
     public Executor(ILogger<Executor> logger)
     {
         _logger = logger;
@@ -24,8 +22,6 @@ public class Executor : IExecutor
 
     public Task<CrackHashWorkerResponse> Execute(CrackHashManagerRequest request)
     {
-
-        TaskBeingExecuted = request;
 
         var generator = new ByteBruteforceGenerator(request.Alphabet);
 
@@ -69,8 +65,6 @@ public class Executor : IExecutor
             PartNumber = request.PartNumber,
             Answers = answers.ToArray()
         };
-
-        TaskBeingExecuted = null;
 
         return Task.FromResult(result);
     }

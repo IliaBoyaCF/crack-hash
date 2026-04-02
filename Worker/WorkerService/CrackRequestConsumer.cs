@@ -102,8 +102,21 @@ public class CrackRequestConsumer : IAsyncDisposable, IHostedService
         {
             try
             {
-                await ProcessMessageAsync(ea, cancellationToken);
-                await _channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken);
+                var ackAction = await ProcessMessageAsync(ea, cancellationToken);
+
+                switch (ackAction)
+                {
+                    case ProcessResult.ACK:
+                        await _channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken);
+                        break;
+                    case ProcessResult.NACK:
+                        await _channel.BasicNackAsync(ea.DeliveryTag, false, true);
+                        break;
+                    case ProcessResult.REJECT:
+                        await _channel.BasicRejectAsync(ea.DeliveryTag, false, cancellationToken);
+                        break;
+                }
+
                 _logger.LogInformation("Message acknowledged: {DeliveryTag}", ea.DeliveryTag);
             }
             catch (Exception ex)
@@ -123,7 +136,7 @@ public class CrackRequestConsumer : IAsyncDisposable, IHostedService
         
     }
 
-    private async Task ProcessMessageAsync(BasicDeliverEventArgs ea, CancellationToken cancellationToken)
+    private async Task<ProcessResult> ProcessMessageAsync(BasicDeliverEventArgs ea, CancellationToken cancellationToken)
     {
         try
         {
@@ -135,13 +148,31 @@ public class CrackRequestConsumer : IAsyncDisposable, IHostedService
             if (crackRequest == null)
             {
                 _logger.LogWarning("Got empty message.");
-                return;
+                return ProcessResult.ACK;
             }
 
             _logger.LogInformation("Received task response: RequestId={RequestId}, PartNumber={PartNumber}/{PartCount}",
                 crackRequest.RequestId, crackRequest.PartNumber, crackRequest.PartCount);
 
+            if (_worker.RequestData.Request.Equals(crackRequest))
+            {
+                while (_worker.RequestData.Status != RequestStatus.COMPLETED)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                }
+                return ProcessResult.ACK;
+            }
+            else
+            {
+                if (_worker.RequestData.Status != RequestStatus.COMPLETED)
+                {
+                    return ProcessResult.NACK;
+                }
+            }
+
             await _worker.Schedule(crackRequest);
+
+            return ProcessResult.ACK;
 
         }
         catch (Exception ex)
@@ -162,4 +193,11 @@ public class CrackRequestConsumer : IAsyncDisposable, IHostedService
         }
 
     }
+}
+
+public enum ProcessResult
+{
+    ACK,
+    NACK,
+    REJECT,
 }

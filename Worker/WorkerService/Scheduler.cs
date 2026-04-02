@@ -11,12 +11,18 @@ public class Scheduler : IWorker
 
     private readonly IFinalizer _finalizer;
     private IExecutor _executor;
+    public RequestData RequestData { get; private set; } = new RequestData()
+    {
+        Request = new CrackHashManagerRequest(),
+        Status = RequestStatus.COMPLETED,
+    };
 
     public Scheduler(IFinalizer finalizer, IExecutor executor, ILogger<Scheduler> logger)
     {
         _finalizer = finalizer; _executor = executor;
         _logger = logger;
     }
+
 
     public Task Schedule(CrackHashManagerRequest request)
     {
@@ -26,7 +32,11 @@ public class Scheduler : IWorker
         var task = Task.Factory.StartNew(           
             () => 
             {
-                var task = _executor.Execute(request).ContinueWith(t => _finalizer.CompleteRequestAsync(t.Result)).Unwrap();
+                var task = _executor
+                .Execute(request)
+                .ContinueWith(t => _finalizer.CompleteRequestAsync(t.Result))
+                .ContinueWith(t => { RequestData.Status = RequestStatus.COMPLETED; return t; })
+                .Unwrap();
                 task.Wait();
             },
             CancellationToken.None,
@@ -41,11 +51,6 @@ public class Scheduler : IWorker
 
     public (string requestId, int partNumber, int partCount, float)? TaskProgress()
     {
-        CrackHashManagerRequest? req = _executor.TaskBeingExecuted;
-        if (req == null)
-        {
-            return null;
-        }
-        return (req.RequestId, req.PartNumber, req.PartCount, _executor.CurrentTaskProgress);
+        return (RequestData.Request.RequestId, RequestData.Request.PartNumber, RequestData.Request.PartCount, _executor.CurrentTaskProgress);
     }
 }
