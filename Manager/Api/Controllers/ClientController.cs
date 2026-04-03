@@ -14,10 +14,13 @@ namespace Manager.Api.Controllers
         private readonly IManager _manager;
         private readonly IRequestProgressService _requestProgressService;
 
-        public ClientController(IManager manager, IRequestProgressService requestProgressService)
+        private readonly ILogger<ClientController> _logger;
+
+        public ClientController(IManager manager, IRequestProgressService requestProgressService, ILogger<ClientController> logger)
         {
             _manager = manager;
             _requestProgressService = requestProgressService;
+            _logger = logger;
         }
 
         [HttpPost("crack")]
@@ -44,6 +47,7 @@ namespace Manager.Api.Controllers
         {
             var requestInfo = await _manager.GetStatusAsync(requestId);
             float progress = await _requestProgressService.GetProgressAsync(requestId);
+            _logger.LogInformation("Progress of the request is calculated it is {Progress}%", progress * 100);
             return requestInfo.ToDto(progress);
         }
 

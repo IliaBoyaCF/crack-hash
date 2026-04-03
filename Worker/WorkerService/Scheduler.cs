@@ -29,6 +29,13 @@ public class Scheduler : IWorker
 
         _logger.LogInformation("Got request: {RequestId}, {PartNumber}/{PartCount}", request.RequestId, request.PartNumber, request.PartCount);
 
+        if (RequestData.Status != RequestStatus.COMPLETED)
+        {
+            throw new InvalidOperationException("Can't schedule new task until previous is completed.");
+        }
+
+        RequestData = new RequestData { Request = request, Status = RequestStatus.IN_PROGRESS, };
+
         var task = Task.Factory.StartNew(           
             () => 
             {

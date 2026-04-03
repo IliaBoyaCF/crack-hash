@@ -151,7 +151,7 @@ public class CrackRequestConsumer : IAsyncDisposable, IHostedService
                 return ProcessResult.ACK;
             }
 
-            _logger.LogInformation("Received task response: RequestId={RequestId}, PartNumber={PartNumber}/{PartCount}",
+            _logger.LogInformation("Received task request: RequestId={RequestId}, PartNumber={PartNumber}/{PartCount}",
                 crackRequest.RequestId, crackRequest.PartNumber, crackRequest.PartCount);
 
             if (_worker.RequestData.Request.Equals(crackRequest))

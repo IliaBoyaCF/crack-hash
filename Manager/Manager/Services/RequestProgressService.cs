@@ -73,6 +73,8 @@ public class RequestProgressService : IRequestProgressService
                     totalPercentage += taskStatus.Progress;
                 }
 
+                _logger.LogInformation("Total percentage: {Total}, Task count {TasksCount}", totalPercentage, tasks.Count);
+
                 return totalPercentage / tasks.Count;
 
 

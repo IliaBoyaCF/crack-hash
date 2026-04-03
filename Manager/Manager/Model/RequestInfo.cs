@@ -94,7 +94,14 @@ internal class RequestInfo : IRequestInfo
             {
                 Data = new List<string>();
             }
-            ((List<string>)Data).AddRange(results);
+            foreach (var item in results) 
+            {
+                if (Data.Contains(item))
+                {
+                    continue;
+                }
+                ((List<string>)Data).Add(item);
+            }
         }
     }
 
