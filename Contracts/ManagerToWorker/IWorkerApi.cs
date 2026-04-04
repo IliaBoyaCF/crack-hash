@@ -1,4 +1,5 @@
-﻿using Refit;
+﻿using Contracts.WorkerToManager;
+using Refit;
 
 namespace Contracts.ManagerToWorker;
 
@@ -9,4 +10,7 @@ public interface IWorkerApi
 
     [Get("/internal/api/worker/hash/crack/ping")]
     public Task<IApiResponse> Ping();
+
+    [Get("/internal/api/worker/hash/crack/progress")]
+    public Task<ApiResponse<TaskStatusResponse>> Progress();
 }

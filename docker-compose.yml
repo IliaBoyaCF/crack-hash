@@ -1,6 +1,131 @@
 version: '3.8'
 
 services:
+  # RabbitMQ Service
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # MongoDB Replica Set Node 1 (Primary)
+  mongo1:
+    image: mongo:7.0
+    container_name: mongo1
+    command: [
+      "mongod",
+      "--replSet", "rs0",
+      "--bind_ip", "localhost,mongo1",
+      "--port", "27017"
+    ]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo1-data:/data/db
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # MongoDB Replica Set Node 2 (Secondary)
+  mongo2:
+    image: mongo:7.0
+    container_name: mongo2
+    command: [
+      "mongod",
+      "--replSet", "rs0",
+      "--bind_ip", "localhost,mongo2",
+      "--port", "27017"
+    ]
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo2-data:/data/db
+    networks:
+      - app-network
+    depends_on:
+      - mongo1
+    restart: unless-stopped
+
+  # MongoDB Replica Set Node 3 (Secondary)
+  mongo3:
+    image: mongo:7.0
+    container_name: mongo3
+    command: [
+      "mongod",
+      "--replSet", "rs0",
+      "--bind_ip", "localhost,mongo3",
+      "--port", "27017"
+    ]
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo3-data:/data/db
+    networks:
+      - app-network
+    depends_on:
+      - mongo1
+    restart: unless-stopped
+
+  # MongoDB Replica Set Initializer
+  mongo-init:
+    image: mongo:7.0
+    container_name: mongo-init
+    depends_on:
+      mongo1:
+        condition: service_healthy
+      mongo2:
+        condition: service_started
+      mongo3:
+        condition: service_started
+    networks:
+      - app-network
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        echo "Waiting for MongoDB to start..."
+        sleep 10
+        
+        echo "Initiating replica set..."
+        mongosh "mongodb://mongo1:27017/admin" --eval '
+          rs.initiate({
+            _id: "rs0",
+            members: [
+              { _id: 0, host: "mongo1:27017", priority: 2 },
+              { _id: 1, host: "mongo2:27017", priority: 1 },
+              { _id: 2, host: "mongo3:27017", priority: 1 }
+            ]
+          })
+        '
+        
+        echo "Waiting for primary election..."
+        sleep 5
+        
+        echo "Replica set initialization completed"
+    restart: "no"
+
+  # Manager Service
   manager:
     build:
       context: .
@@ -11,9 +136,46 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__MongoDB=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/crackhash_db?replicaSet=rs0
+      # Task Queue (отправка задач воркерам)
+      - RabbitMQTaskQueue__HostName=rabbitmq
+      - RabbitMQTaskQueue__Port=5672
+      - RabbitMQTaskQueue__UserName=admin
+      - RabbitMQTaskQueue__Password=admin123
+      - RabbitMQTaskQueue__VirtualHost=/
+      - RabbitMQTaskQueue__ExchangeName=tasks.direct
+      - RabbitMQTaskQueue__QueueName=worker_tasks
+      - RabbitMQTaskQueue__RoutingKey=task.schedule
+      - RabbitMQTaskQueue__Durable=true
+      - RabbitMQTaskQueue__PrefetchCount=1
+      # Response Queue (получение ответов от воркеров)
+      - RabbitMQResponseQueue__HostName=rabbitmq
+      - RabbitMQResponseQueue__Port=5672
+      - RabbitMQResponseQueue__UserName=admin
+      - RabbitMQResponseQueue__Password=admin123
+      - RabbitMQResponseQueue__VirtualHost=/
+      - RabbitMQResponseQueue__ExchangeName=response.direct
+      - RabbitMQResponseQueue__QueueName=worker_response
+      - RabbitMQResponseQueue__RoutingKey=task.response
+      - RabbitMQResponseQueue__Durable=true
+      - RabbitMQResponseQueue__PrefetchCount=1
+      # Workers configuration
+      - Workers__Instances__0__Id=worker-1
+      - Workers__Instances__0__Address=http://worker-1:8080
+      - Workers__Instances__1__Id=worker-2
+      - Workers__Instances__1__Address=http://worker-2:8080
+      - Workers__Instances__2__Id=worker-3
+      - Workers__Instances__2__Address=http://worker-3:8080
     networks:
       - app-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
+    restart: on-failure
 
+  # Worker Service 1
   worker-1:
     build:
       context: .
@@ -24,9 +186,39 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
+      - Manager__Address=http://manager:8080
+      # Task Queue (получение задач от менеджера)
+      - RabbitMQTaskQueue__HostName=rabbitmq
+      - RabbitMQTaskQueue__Port=5672
+      - RabbitMQTaskQueue__UserName=admin
+      - RabbitMQTaskQueue__Password=admin123
+      - RabbitMQTaskQueue__VirtualHost=/
+      - RabbitMQTaskQueue__ExchangeName=tasks.direct
+      - RabbitMQTaskQueue__QueueName=worker_tasks
+      - RabbitMQTaskQueue__RoutingKey=task.schedule
+      - RabbitMQTaskQueue__Durable=true
+      - RabbitMQTaskQueue__PrefetchCount=1
+      # Response Queue (отправка ответов менеджеру)
+      - RabbitMQResponseQueue__HostName=rabbitmq
+      - RabbitMQResponseQueue__Port=5672
+      - RabbitMQResponseQueue__UserName=admin
+      - RabbitMQResponseQueue__Password=admin123
+      - RabbitMQResponseQueue__VirtualHost=/
+      - RabbitMQResponseQueue__ExchangeName=response.direct
+      - RabbitMQResponseQueue__QueueName=worker_response
+      - RabbitMQResponseQueue__RoutingKey=task.response
+      - RabbitMQResponseQueue__Durable=true
+      - RabbitMQResponseQueue__PrefetchCount=1
     networks:
       - app-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      manager:
+        condition: service_started
+    restart: on-failure
 
+  # Worker Service 2
   worker-2:
     build:
       context: .
@@ -37,9 +229,39 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
+      - Manager__Address=http://manager:8080
+      # Task Queue (получение задач от менеджера)
+      - RabbitMQTaskQueue__HostName=rabbitmq
+      - RabbitMQTaskQueue__Port=5672
+      - RabbitMQTaskQueue__UserName=admin
+      - RabbitMQTaskQueue__Password=admin123
+      - RabbitMQTaskQueue__VirtualHost=/
+      - RabbitMQTaskQueue__ExchangeName=tasks.direct
+      - RabbitMQTaskQueue__QueueName=worker_tasks
+      - RabbitMQTaskQueue__RoutingKey=task.schedule
+      - RabbitMQTaskQueue__Durable=true
+      - RabbitMQTaskQueue__PrefetchCount=1
+      # Response Queue (отправка ответов менеджеру)
+      - RabbitMQResponseQueue__HostName=rabbitmq
+      - RabbitMQResponseQueue__Port=5672
+      - RabbitMQResponseQueue__UserName=admin
+      - RabbitMQResponseQueue__Password=admin123
+      - RabbitMQResponseQueue__VirtualHost=/
+      - RabbitMQResponseQueue__ExchangeName=response.direct
+      - RabbitMQResponseQueue__QueueName=worker_response
+      - RabbitMQResponseQueue__RoutingKey=task.response
+      - RabbitMQResponseQueue__Durable=true
+      - RabbitMQResponseQueue__PrefetchCount=1
     networks:
       - app-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      manager:
+        condition: service_started
+    restart: on-failure
 
+  # Worker Service 3
   worker-3:
     build:
       context: .
@@ -50,8 +272,43 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
+      - Manager__Address=http://manager:8080
+      # Task Queue (получение задач от менеджера)
+      - RabbitMQTaskQueue__HostName=rabbitmq
+      - RabbitMQTaskQueue__Port=5672
+      - RabbitMQTaskQueue__UserName=admin
+      - RabbitMQTaskQueue__Password=admin123
+      - RabbitMQTaskQueue__VirtualHost=/
+      - RabbitMQTaskQueue__ExchangeName=tasks.direct
+      - RabbitMQTaskQueue__QueueName=worker_tasks
+      - RabbitMQTaskQueue__RoutingKey=task.schedule
+      - RabbitMQTaskQueue__Durable=true
+      - RabbitMQTaskQueue__PrefetchCount=1
+      # Response Queue (отправка ответов менеджеру)
+      - RabbitMQResponseQueue__HostName=rabbitmq
+      - RabbitMQResponseQueue__Port=5672
+      - RabbitMQResponseQueue__UserName=admin
+      - RabbitMQResponseQueue__Password=admin123
+      - RabbitMQResponseQueue__VirtualHost=/
+      - RabbitMQResponseQueue__ExchangeName=response.direct
+      - RabbitMQResponseQueue__QueueName=worker_response
+      - RabbitMQResponseQueue__RoutingKey=task.response
+      - RabbitMQResponseQueue__Durable=true
+      - RabbitMQResponseQueue__PrefetchCount=1
     networks:
       - app-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      manager:
+        condition: service_started
+    restart: on-failure
+
+volumes:
+  rabbitmq_data:
+  mongo1-data:
+  mongo2-data:
+  mongo3-data:
 
 networks:
   app-network:

@@ -5,6 +5,7 @@ using Serilog;
 using Worker.Abstractions.Options;
 using Worker.Abstractions;
 using Worker.Service;
+using Common.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +19,12 @@ builder.Host.UseSerilog();
 builder.Services.Configure<ManagerOptions>(
     builder.Configuration.GetSection(ManagerOptions.SectionName));
 
+builder.Services.Configure<TaskQueueRabbitMQOptions>(
+    builder.Configuration.GetSection(TaskQueueRabbitMQOptions.SectionName));
+
+builder.Services.Configure<ResponseQueueRabbitMQOptions>(
+    builder.Configuration.GetSection(ResponseQueueRabbitMQOptions.SectionName));
+
 // Add services to the container.
 
 builder.Services.AddControllers();
@@ -25,8 +32,10 @@ builder.Services.AddControllers();
 builder.Services.AddMvc().AddXmlFormaterExtensions();
 
 builder.Services.AddSingleton<IWorker, Scheduler>();
-builder.Services.AddSingleton<IFinalizer, Finalizer>();
+builder.Services.AddSingleton<IFinalizer, ResponsePublisher>();
 builder.Services.AddSingleton<IExecutor, Executor>();
+
+builder.Services.AddHostedService<CrackRequestConsumer>();
 
 builder.Services.AddRefitClient<IManagerApi>()
     .ConfigureHttpClient((serviceProvider, httpClient) =>
