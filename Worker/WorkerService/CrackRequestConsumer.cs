@@ -1,4 +1,5 @@
-﻿using Common.Options;
+﻿using Common.Abstractions;
+using Common.Options;
 using Common.Utils;
 using Contracts.ManagerToWorker;
 using Microsoft.Extensions.Hosting;
@@ -11,11 +12,8 @@ using Worker.Abstractions;
 
 namespace Worker.Service;
 
-public class CrackRequestConsumer : IAsyncDisposable, IHostedService
+public class CrackRequestConsumer : RabbitMQUser, IAsyncDisposable, IHostedService
 {
-    private readonly IConnection _connection;
-    private readonly IChannel _channel;
-    private readonly TaskQueueRabbitMQOptions _options;
 
     private AsyncEventingBasicConsumer _consumer;
     private string _consumerTag;
@@ -24,72 +22,10 @@ public class CrackRequestConsumer : IAsyncDisposable, IHostedService
 
     private readonly ILogger<CrackRequestConsumer> _logger;
 
-    private bool _disposed;
-
-    public CrackRequestConsumer(ILogger<CrackRequestConsumer> logger, IOptions<TaskQueueRabbitMQOptions> options, IWorker worker)
+    public CrackRequestConsumer(ILogger<CrackRequestConsumer> logger, IOptions<TaskQueueRabbitMQOptions> options, IWorker worker) : base(options.Value)
     {
         _logger = logger;
-        _options = options.Value;
-
-        var factory = new ConnectionFactory
-        {
-            HostName = _options.HostName,
-            Port = _options.Port,
-            UserName = _options.UserName,
-            Password = _options.Password,
-            VirtualHost = _options.VirtualHost,
-            AutomaticRecoveryEnabled = true,
-            NetworkRecoveryInterval = TimeSpan.FromSeconds(10),
-        };
-
-        _connection = Task.Run(() => factory.CreateConnectionAsync()).Result;
-
-        var channelOptions = new CreateChannelOptions(
-            publisherConfirmationsEnabled: true,
-            publisherConfirmationTrackingEnabled: true);
-        _channel = Task.Run(() => _connection.CreateChannelAsync(channelOptions)).Result;
-
-        Task.Run(() => InitializeQueueAsync());
         _worker = worker;
-    }
-
-    private async Task InitializeQueueAsync()
-    {
-        await _channel.ExchangeDeclareAsync(
-            exchange: _options.ExchangeName,
-            type: ExchangeType.Direct,
-            durable: _options.Durable,
-            autoDelete: false);
-
-        await _channel.QueueDeclareAsync(
-            queue: _options.QueueName,
-            durable: _options.Durable,
-            exclusive: false,
-            autoDelete: false);
-
-        await _channel.QueueBindAsync(
-            queue: _options.QueueName,
-            exchange: _options.ExchangeName,
-            routingKey: _options.RoutingKey);
-
-        _logger.LogInformation("Queue {QueueName} bound to exchange {ExchangeName} with routing key {RoutingKey}",
-            _options.QueueName, _options.ExchangeName, _options.RoutingKey);
-
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed) return;
-
-        await _channel.CloseAsync();
-        await _connection.CloseAsync();
-
-        await _channel.DisposeAsync();
-        await _connection.DisposeAsync();
-
-        _disposed = true;
-
-        _logger.LogInformation("{ClassName} disposed", GetType().Name);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -156,9 +92,9 @@ public class CrackRequestConsumer : IAsyncDisposable, IHostedService
 
             if (_worker.RequestData.Request.Equals(crackRequest))
             {
-                while (_worker.RequestData.Status != RequestStatus.COMPLETED)
+                while (_worker.RequestData.Status != RequestStatus.COMPLETED) 
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(1));
+                    _worker.RequestData.WaitForCompetion();
                 }
                 return ProcessResult.ACK;
             }

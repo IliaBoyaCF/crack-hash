@@ -1,6 +1,6 @@
 ﻿namespace Common.Options;
 
-public class TaskQueueRabbitMQOptions
+public class TaskQueueRabbitMQOptions : IRabbitMQOptions
 {
     public const string SectionName = "RabbitMQTaskQueue";
 
@@ -14,4 +14,5 @@ public class TaskQueueRabbitMQOptions
     public string RoutingKey { get; set; } = "task.schedule";
     public int PrefetchCount { get; set; } = 1;
     public bool Durable { get; set; } = true;
+
 }

@@ -1,6 +1,6 @@
 ﻿namespace Common.Options;
 
-public class ResponseQueueRabbitMQOptions
+public class ResponseQueueRabbitMQOptions : IRabbitMQOptions
 {
     public const string SectionName = "RabbitMQResponseQueue";
 
@@ -14,4 +14,5 @@ public class ResponseQueueRabbitMQOptions
     public string RoutingKey { get; set; } = "task.response";
     public int PrefetchCount { get; set; } = 1;
     public bool Durable { get; set; } = true;
+
 }

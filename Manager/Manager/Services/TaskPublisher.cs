@@ -1,81 +1,27 @@
-﻿using Common.Options;
+﻿using Common.Abstractions;
+using Common.Options;
 using Common.Utils;
 using Manager.Abstractions.Model;
 using Manager.Abstractions.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
+using RabbitMQ.Client.Exceptions;
 using System.Text;
 
 namespace Manager.Service.Services;
 
-public class TaskPublisher : ITaskScheduler, IAsyncDisposable
+public class TaskPublisher : RabbitMQUser, ITaskScheduler, IAsyncDisposable
 {
-
-    private readonly IConnection _connection;
-    private readonly IChannel _channel;
-    private readonly TaskQueueRabbitMQOptions _options;
 
     private readonly ITaskStorage _taskStorage;
 
     private readonly ILogger<TaskPublisher> _logger;
-    
-    private bool _disposed;
 
-    public TaskPublisher(ILogger<TaskPublisher> logger, IOptions<TaskQueueRabbitMQOptions> options, ITaskStorage taskStorage)
+    public TaskPublisher(ILogger<TaskPublisher> logger, IOptions<TaskQueueRabbitMQOptions> options, ITaskStorage taskStorage) : base(options.Value)
     {
         _logger = logger;
-        _options = options.Value;
-
-        var factory = new ConnectionFactory
-        {
-            HostName = _options.HostName,
-            Port = _options.Port,
-            UserName = _options.UserName,
-            Password = _options.Password,
-            VirtualHost = _options.VirtualHost,
-            AutomaticRecoveryEnabled = true,
-            NetworkRecoveryInterval = TimeSpan.FromSeconds(10),
-        };
-
-        _connection = Task.Run(() => factory.CreateConnectionAsync()).Result;
-
-        var channelOptions = new CreateChannelOptions(
-            publisherConfirmationsEnabled: false,
-            publisherConfirmationTrackingEnabled: false);
-        _channel = Task.Run(() => _connection.CreateChannelAsync(channelOptions)).Result;
-
-        Task.Run(() => InitializeQueueAsync());
         _taskStorage = taskStorage;
-    }
-
-    private async Task InitializeQueueAsync()
-    {
-        await _channel.ExchangeDeclareAsync(
-            exchange: _options.ExchangeName,
-            type: ExchangeType.Direct,
-            durable: _options.Durable,
-            autoDelete: false);
-
-        await _channel.QueueDeclareAsync(
-            queue: _options.QueueName,
-            durable: _options.Durable,
-            exclusive: false,
-            autoDelete: false);
-
-        await _channel.QueueBindAsync(
-            queue: _options.QueueName,
-            exchange: _options.ExchangeName,
-            routingKey: _options.RoutingKey);
-
-        await _channel.BasicQosAsync(
-            prefetchSize: 0,
-            prefetchCount: (ushort)_options.PrefetchCount,
-            global: false);
-
-        _logger.LogInformation("Queue {QueueName} bound to exchange {ExchangeName} with routing key {RoutingKey}",
-            _options.QueueName, _options.ExchangeName, _options.RoutingKey);
-
     }
 
     public async Task ScheduleAsync(IEnumerable<IWorkerTask> tasks)
@@ -95,53 +41,44 @@ public class TaskPublisher : ITaskScheduler, IAsyncDisposable
         foreach (var task in taskList)
         {
             var message = task.Request;
-            try
+            while (true)
             {
-
-                var xml = XmlSerializationUtils.Serialize(message);
-                var body = Encoding.UTF8.GetBytes(xml);
-
-                var properties = new BasicProperties
+                _connectionReady.Wait();
+                try
                 {
-                    Persistent = _options.Durable,
-                    ContentType = "application/xml",
-                    DeliveryMode = DeliveryModes.Persistent
-                };
 
-                await _channel.BasicPublishAsync(
-                    exchange: _options.ExchangeName,
-                    routingKey: _options.RoutingKey,
-                    mandatory: true,
-                    basicProperties: properties,
-                    body: body);
+                    var xml = XmlSerializationUtils.Serialize(message);
+                    var body = Encoding.UTF8.GetBytes(xml);
 
-                _logger.LogInformation("Task ({RequestId}, {PartNumber}/{PartCount}) published to queue", message.RequestId, message.PartNumber, message.PartCount);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to publish task ({RequestId}, {PartNumber}/{PartCount}) to queue", message.RequestId, message.PartNumber, message.PartCount);
+                    var properties = new BasicProperties
+                    {
+                        Persistent = _options.Durable,
+                        ContentType = "application/xml",
+                        DeliveryMode = DeliveryModes.Persistent
+                    };
+
+                    await _channel.BasicPublishAsync(
+                        exchange: _options.ExchangeName,
+                        routingKey: _options.RoutingKey,
+                        mandatory: true,
+                        basicProperties: properties,
+                        body: body);
+
+                    _logger.LogInformation("Task ({RequestId}, {PartNumber}/{PartCount}) published to queue", message.RequestId, message.PartNumber, message.PartCount);
+                    break;
+                }
+                catch (Exception ex) when (ex is PublishException || ex is OperationInterruptedException || ex is AlreadyClosedException || ex is TimeoutException)
+                {
+                    _logger.LogError(ex, "Failed to publish task ({RequestId}, {PartNumber}/{PartCount}) to queue. Retrying.", message.RequestId, message.PartNumber, message.PartCount);
+
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogCritical(ex, "Failed to publish task ({RequestId}, {PartNumber}/{PartCount}) to queue.", message.RequestId, message.PartNumber, message.PartCount);
+                    throw;
+                }
             }
         }
-
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        await _channel.CloseAsync();
-        await _connection.CloseAsync();
-
-        await _channel.DisposeAsync();
-        await _connection.DisposeAsync();
-
-        _disposed = true;
-
-        _logger.LogInformation("{ClassName} disposed", GetType().Name);
-
 
     }
 }
