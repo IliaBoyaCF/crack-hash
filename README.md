@@ -21,6 +21,8 @@ General
 ### Key Features
 - **Distributed computing** — scales horizontally by adding more workers
 - **Request tracking** — each request gets a unique ID for status polling
+- **Request progress** - is exposed as a percentage via status polling
+- **Fault tolerance** - each request is guaranteed to be executed completely unless the timeout exceeded
 - **Result caching** — identical requests return cached results without recomputation
 - **Configurable alphabet** — uses lowercase Latin letters and digits by default
 
@@ -28,7 +30,7 @@ Limitations
 ----
 
 * Only MD5 hashing algorithm is supported
-* Default configuration searches through strings which consist of lowercase English alphabet and digits.
+* Default configuration searches through strings which consist of lowercase English alphabet and digits (a-z 0-9).
 
 Getting Started
 ----
@@ -62,8 +64,6 @@ Client API
 
 Communication between user and the system happens according to the following protocol:
 
-<details>
-<summary>Hash crack request</summary>
 Sends request to find strings with length less than or equal to maximum length that will give you the provided MD5 hash.
 
 ### Request
@@ -89,9 +89,7 @@ Will return 200 and GUID of the request to check it's status later on  (see on <
     "requestId": "730a04e6-4de9-41f9-9d5b-53b88b17afac" // GUID of the request
 }
 ```
-</details>
-<details>
-<summary>Hash crack request status check</summary>
+
 Use the GUID of the request (see <code>Hash crack request</code>) to check its status.
 
 ### Request
@@ -106,8 +104,9 @@ If request is queued or in process of computing then the response will be:
 
 ```http
 {
-    "status": "IN_PROGRESS",
-    "data": null
+    "status": "IN_PROGRESS" | "PENDING",
+    "data": null,
+    "progress": 0.345123
 }
 ```
 
@@ -115,7 +114,8 @@ When request is completed:
 ```http
 {
     "status": "READY",
-    "data": ["result"] // might be empty array if nothing was found
+    "data": ["result"], // might be empty array if nothing was found
+    "progress": 1.0
 }
 ```
 
@@ -123,7 +123,8 @@ When some of the calculations successfully finished and some failed::
 ```http
 {
     "status": "READY_WITH_FAULTS",
-    "data": ["result"] // might be empty array
+    "data": ["result"], // might be empty array
+    "progress": 0.123456
 }
 ```
 
@@ -131,29 +132,28 @@ When a critical error has occured:
 ```http
 {
     "status": "ERROR",
-    "data": null
+    "data": null,
+    "progress": 0.123456
 }
 ```
-</details>
 
 
-Internal API
-----
-Manager and workers communicate via the following protocol:
+## Internal API
+
+Manager and workers communicate primarily via RabbitMQ message broker. The following describes both the primary transport (RabbitMQ) and a fallback HTTP API for debugging purposes.
+
+---
+
+### Manager to Worker
+
+**Type:** Task assignment
+
+#### Message Format (XML)
+
+The message follows this XSD schema:
 
 <details>
-<summary>Manager to worker</summary>
-Assign task:
-
-### Request
-
-```http
-POST /internal/api/worker/hash/crack/task
-Content-Type: application/xml
-```
-
-### Body
-The body is based on the following xsd-scheme:
+<summary>Show XSD schema</summary>
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -183,12 +183,12 @@ The body is based on the following xsd-scheme:
                 </xs:element>
                 <xs:element name="Hash" type="xs:string">
                     <xs:annotation>
-                        <xs:documentation>Hash</xs:documentation>
+                        <xs:documentation>MD5 hash to crack</xs:documentation>
                     </xs:annotation>
                 </xs:element>
                 <xs:element name="MaxLength" type="xs:int">
                     <xs:annotation>
-                        <xs:documentation>Maximum string length</xs:documentation>
+                        <xs:documentation>Maximum string length to generate</xs:documentation>
                     </xs:annotation>
                 </xs:element>
                 <xs:element name="Alphabet">
@@ -208,19 +208,72 @@ The body is based on the following xsd-scheme:
 ```
 
 </details>
-<details>
-<summary>Worker to manager</summary>
-Report work results to manager:
 
-### Request
+**Example:**
+
+<details>
+<summary>Show example</summary>
+
+```xml
+<CrackHashManagerRequest xmlns="http://ccfit.nsu.ru/schema/crack-hash-request">
+    <RequestId>550e8400-e29b-41d4-a716-446655440000</RequestId>
+    <PartNumber>1</PartNumber>
+    <PartCount>4</PartCount>
+    <Hash>5d41402abc4b2a76b9719d911017c592</Hash>
+    <MaxLength>4</MaxLength>
+    <Alphabet>
+        <symbols>a</symbols>
+        <symbols>b</symbols>
+        <symbols>c</symbols>
+    </Alphabet>
+</CrackHashManagerRequest>
+```
+
+</details>
+
+
+
+#### Primary Transport: Message Broker (RabbitMQ)
+
+| Property | Value |
+|----------|-------|
+| Exchange | `tasks.direct` (type: `direct`, durable) |
+| Queue | `worker_tasks` (durable) |
+| Routing Key | `task.schedule` |
+| Delivery Mode | Persistent |
+| Consumer Acknowledgement | Manual (`autoAck: false`) |
+| Prefetch Count | 1 (fair dispatch) |
+
+**Behavior:**
+- Manager publishes tasks to `tasks.direct` exchange with routing key `task.schedule`
+- All workers consume from the same `worker_tasks` queue
+- Each task is delivered to exactly one worker (round-robin with prefetch=1)
+- Worker must acknowledge the task only after successfully publishing the result to the response queue
+- On worker failure, unacknowledged tasks are requeued and redistributed
+
+#### Fallback Transport: HTTP API (Not Recommended)
+
+Use only for debugging.
 
 ```http
-PATCH /internal/api/manager/hash/crack/request
+POST /internal/api/worker/hash/crack/task
 Content-Type: application/xml
 ```
 
-### Body
-The body is based on the following xsd-scheme:
+**Note:** HTTP fallback does not provide message persistence, automatic retries, or load balancing. Use only as a temporary fallback.
+
+---
+
+### Worker to Manager
+
+**Type:** Result reporting
+
+#### Message Format (XML)
+
+The message follows this XSD schema:
+
+<details>
+<summary>Show XSD schema</summary>
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -244,7 +297,7 @@ The body is based on the following xsd-scheme:
                 </xs:element>
                 <xs:element name="Answers">
                     <xs:annotation>
-                        <xs:documentation>Strings</xs:documentation>
+                        <xs:documentation>Strings that match the hash</xs:documentation>
                     </xs:annotation>
                     <xs:complexType>
                         <xs:sequence>
@@ -260,6 +313,70 @@ The body is based on the following xsd-scheme:
 
 </details>
 
+**Example:**
+
+<details>
+<summary>Show example</summary>
+
+
+```xml
+<CrackHashWorkerResponse xmlns="http://ccfit.nsu.ru/schema/crack-hash-response">
+    <RequestId>550e8400-e29b-41d4-a716-446655440000</RequestId>
+    <PartNumber>1</PartNumber>
+    <Answers>
+        <words>hello</words>
+        <words>world</words>
+    </Answers>
+</CrackHashWorkerResponse>
+```
+
+</details>
+
+#### Primary Transport: Message Broker (RabbitMQ)
+
+| Property | Value |
+|----------|-------|
+| Exchange | `response.direct` (type: `direct`, durable) |
+| Queue | `worker_response` (durable) |
+| Routing Key | `task.response` |
+| Delivery Mode | Persistent |
+| Consumer Acknowledgement | Manual (`autoAck: false`) |
+
+**Behavior:**
+- Worker publishes result to `response.direct` exchange with routing key `task.response`
+- Manager consumes results from `worker_response` queue
+- Manager acknowledges the result after successfully processing it
+- If acknowledgement fails, the message remains in queue and will be redelivered
+
+#### Fallback Transport: HTTP API (Not Recommended)
+
+Use only for debugging.
+
+```http
+PATCH /internal/api/manager/hash/crack/request
+Content-Type: application/xml
+```
+
+**Note:** HTTP fallback does not provide guaranteed delivery. In case of manager failure, results may be lost. Always prefer the message broker transport.
+
+---
+
+### Queue Configuration Summary
+
+| Purpose | Exchange | Queue | Routing Key | Consumed By |
+|---------|----------|-------|-------------|-------------|
+| Task distribution | `tasks.direct` | `worker_tasks` | `task.schedule` | Workers |
+| Result collection | `response.direct` | `worker_response` | `task.response` | Manager |
+
+### Delivery Guarantees
+
+| Aspect | Guarantee |
+|--------|-----------|
+| Message persistence | Yes (durable queues + persistent messages) |
+| At-least-once delivery | Yes (manual acknowledgements) |
+| Ordering | No (tasks may be processed out of order) |
+| Dead-letter handling | Not implemented (messages are retried indefinitely) |
+
 Technology Stack
 ----
 
@@ -268,6 +385,8 @@ Technology Stack
 | **Programming Language** | C# |
 | **Framework** | .NET 10, ASP.NET Core |
 | **Containerization** | Docker, Docker Compose |
+| **Message broker** | RabbitMQ |
+| **Database** | MongoDB |
 | **Logging** | Serilog |
 | **Combinatorics** | Kaos.Combinatorics (v5.0.0) |
 | **Version Control** | Git |
@@ -279,3 +398,14 @@ Architecture
 
 ![Diagramm](CrackHash.drawio.svg)
 
+Optional UI
+----
+
+If you prefer a visual interface over calling the API directly, there's a ready-to-use
+web dashboard available:
+
+👉 **[crackhash-ui](https://github.com/IliaBoyaCF/crack-hash-ui)** 
+
+> **Note**: The UI repository is a rapid prototype (vibe-coded) focused on demonstrating
+> the system's functionality. It's not meant as an example of production frontend architecture,
+> but it works and saves you from writing your own client.

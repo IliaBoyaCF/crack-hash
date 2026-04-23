@@ -1,9 +1,11 @@
 ﻿using Contracts.ManagerToWorker;
 
-namespace Worker.Abstractions
+namespace Worker.Abstractions;
+
+public interface IExecutor
 {
-    public interface IExecutor
-    {
-        Task<CrackHashWorkerResponse> Execute(CrackHashManagerRequest request);
-    }
+
+    float CurrentTaskProgress { get; }
+
+    Task<CrackHashWorkerResponse> Execute(CrackHashManagerRequest request);
 }

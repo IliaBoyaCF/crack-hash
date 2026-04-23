@@ -45,6 +45,13 @@ public class ApiExceptionFilterAttribute : ExceptionFilterAttribute
                     StatusCodes.Status400BadRequest,
                     validation.Message);
                 break;
+            case QueueOverflowException queueOverflow:
+                _logger.LogWarning(queueOverflow, "Request queue overflowed.");
+                context.Result = CreateProblemDetails(
+                    queueOverflow,
+                    StatusCodes.Status503ServiceUnavailable,
+                    queueOverflow.Message);
+                break;
 
             default:
                 _logger.LogError(exception, "Unhandled exception");
@@ -78,6 +85,7 @@ public class ApiExceptionFilterAttribute : ExceptionFilterAttribute
     {
         400 => "Bad Request",
         404 => "Not Found",
+        503 => "Service unavailable",
         500 => "Internal Server Error",
         _ => "Error"
     };

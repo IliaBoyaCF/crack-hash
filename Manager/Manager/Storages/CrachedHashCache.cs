@@ -3,7 +3,7 @@ using Manager.Abstractions.Services;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 
-namespace Manager.Service;
+namespace Manager.Service.Storages;
 
 public class CrachedHashCache : ICrackedHashCache
 {

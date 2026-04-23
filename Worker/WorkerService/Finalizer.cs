@@ -18,7 +18,7 @@ namespace Worker.Service
             _logger = logger;
         }
 
-        public async Task CompleteRequest(CrackHashWorkerResponse response)
+        public async Task CompleteRequestAsync(CrackHashWorkerResponse response)
         {
             await _managerApi.SendResponseAsync(response);
 

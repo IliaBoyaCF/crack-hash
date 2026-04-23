@@ -1,10 +1,14 @@
 ﻿using Contracts.ManagerToWorker;
+using Contracts.WorkerToManager;
+using DnsClient.Internal;
 using Manager.Abstractions.Model;
 using Manager.Abstractions.Options;
 using Manager.Abstractions.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 
-namespace Manager.Service;
+namespace Manager.Service.Services;
 
 public class WorkerMonitor : IWorkerMonitor
 {
@@ -12,10 +16,13 @@ public class WorkerMonitor : IWorkerMonitor
     private IWorkerApiFactory _workerApiFactory;
     private readonly IOptions<WorkerOptions> _workerOptions;
 
-    public WorkerMonitor(IOptions<WorkerOptions> workerOptions, IWorkerApiFactory workerApiFactory)
+    private readonly ILogger<WorkerMonitor> _logger;
+
+    public WorkerMonitor(IOptions<WorkerOptions> workerOptions, IWorkerApiFactory workerApiFactory, ILogger<WorkerMonitor> logger)
     {
         _workerOptions = workerOptions;
         _workerApiFactory = workerApiFactory;
+        _logger = logger;
     }
 
     public async Task<List<WorkerDescription>> GetLiveWorkersAsync()
@@ -56,6 +63,27 @@ public class WorkerMonitor : IWorkerMonitor
         catch
         {
             return false;
+        }
+
+    }
+
+    public async Task<TaskStatusResponse?> GetTaskProgressAsync(WorkerDescription workerDescription)
+    {
+        var workerApi = _workerApiFactory.CreateWorkerApi(workerDescription.Uri);
+
+        try
+        {
+            var response = await workerApi.Progress();
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+            _logger.LogInformation("Got worker progress response with content {Content}", response.Content);
+            return response.Content;
+        }
+        catch
+        {
+            return null;
         }
 
     }

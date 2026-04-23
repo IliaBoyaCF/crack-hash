@@ -21,7 +21,7 @@ namespace Manager.Api.Controllers
         public async Task<IActionResult> ReceiveResponse([FromXmlBody] CrackHashWorkerResponse response)
         {
 
-            await _requestFinalizer.ProcessWorkerResponse(response);
+            await _requestFinalizer.ProcessWorkerResponseAsync(response);
 
             return Ok(response);
 

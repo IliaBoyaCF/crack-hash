@@ -6,5 +6,6 @@ public class RequestInfoDto
 {
     public RequestStatus Status { get; set; }
     public IEnumerable<string>? Data { get; set; } = null;
+    public float Progress { get; set; }
 
 }

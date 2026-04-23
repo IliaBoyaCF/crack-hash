@@ -14,3 +14,5 @@ public class ApiException : Exception
 public class NotFoundException(string message) : ApiException(message, 404);
 
 public class ValidationException(string message) : ApiException(message, 400);
+
+public class QueueOverflowException(string message) : ApiException(message, 503);

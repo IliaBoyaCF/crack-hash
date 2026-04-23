@@ -1,6 +1,4 @@
 ﻿using Kaos.Combinatorics;
-using System;
-using System.Collections.Generic;
 using System.Text;
 
 namespace Worker.Service;
